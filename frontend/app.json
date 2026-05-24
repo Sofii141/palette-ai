@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Palette AI",
+    "slug": "palette-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "paletteai",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios", "android", "web"],
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#EFEAE0"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
