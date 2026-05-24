@@ -1,51 +1,44 @@
 /**
- * Art Institute of Chicago API client.
- * Public, no key required. https://api.artic.edu/docs/
+ * Client for the Palette AI backend (`../backend`).
+ *
+ * The backend normalizes the Art Institute of Chicago payload, so the
+ * fields here are the cleaned shape — not the raw AIC shape.
+ *
+ * In dev on a real device you must use your machine's LAN IP instead of
+ * localhost, because the phone can't reach the laptop's `localhost`.
+ * Update `API_BASE` accordingly.
  */
 
-const BASE = 'https://api.artic.edu/api/v1';
-const IIIF = 'https://www.artic.edu/iiif/2';
+import { Platform } from 'react-native';
 
-const FIELDS = [
-  'id',
-  'title',
-  'artist_display',
-  'artist_title',
-  'date_display',
-  'date_start',
-  'date_end',
-  'medium_display',
-  'place_of_origin',
-  'description',
-  'short_description',
-  'thumbnail',
-  'image_id',
-  'classification_title',
-  'style_title',
-  'department_title',
-  'gallery_title',
-  'is_on_view',
-].join(',');
+// Edit this if you run the backend somewhere else.
+//   - localhost:3001  → web / iOS simulator on same machine
+//   - 10.0.2.2:3001   → Android emulator
+//   - 192.168.x.x:3001 → phone on the same WiFi (use your machine's LAN IP)
+const HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+export const API_BASE = `http://${HOST}:3001/api`;
 
 export interface Artwork {
   id: number;
   title: string;
-  artist_display: string;
-  artist_title: string | null;
-  date_display: string;
-  date_start: number | null;
-  date_end: number | null;
-  medium_display: string | null;
-  place_of_origin: string | null;
-  description: string | null;
-  short_description: string | null;
-  thumbnail: { alt_text?: string; lqip?: string } | null;
-  image_id: string | null;
-  classification_title: string | null;
-  style_title: string | null;
-  department_title: string | null;
-  gallery_title: string | null;
-  is_on_view: boolean;
+  artist: string;
+  artistFull: string;
+  date: string;
+  dateStart: number | null;
+  dateEnd: number | null;
+  medium: string | null;
+  place: string | null;
+  description: string;
+  image: string | null;
+  imageLarge: string | null;
+  thumbnail: string | null;
+  lqip: string | null;
+  classification: string | null;
+  style: string | null;
+  department: string | null;
+  gallery: string | null;
+  onView: boolean;
+  aicUrl: string;
 }
 
 export interface ArtworkListResponse {
@@ -59,81 +52,40 @@ export interface ArtworkListResponse {
   };
 }
 
-export function imageUrl(imageId: string | null, width: number = 843): string | null {
-  if (!imageId) return null;
-  return `${IIIF}/${imageId}/full/${width},/0/default.jpg`;
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(API_BASE + path);
+  if (!res.ok) throw new Error(`API ${res.status} on ${path}`);
+  return res.json();
 }
 
-export function stripHtml(html: string | null | undefined): string {
-  if (!html) return '';
-  return html
-    .replace(/<\/?(p|br|div)[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-/**
- * Fetch a paginated list of artworks (filtered to ones with images).
- */
-export async function fetchArtworks(opts?: {
+export function fetchArtworks(opts?: {
   page?: number;
   limit?: number;
-  query?: string;
+  period?: number | null;
 }): Promise<ArtworkListResponse> {
-  const page = opts?.page ?? 1;
-  const limit = opts?.limit ?? 20;
-
-  // Use search endpoint to filter for artworks with images
-  const params = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-    fields: FIELDS,
-  });
-
-  // Public-domain artworks with images that are highlights
-  const url = opts?.query
-    ? `${BASE}/artworks/search?q=${encodeURIComponent(opts.query)}&${params}`
-    : `${BASE}/artworks?${params}&is_public_domain=true`;
-
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Art API ${res.status}`);
-  const json = (await res.json()) as ArtworkListResponse;
-
-  // Filter to ones that actually have an image_id
-  json.data = json.data.filter((a) => a.image_id);
-  return json;
+  const params = new URLSearchParams();
+  if (opts?.page) params.set('page', String(opts.page));
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  if (opts?.period != null) params.set('period', String(opts.period));
+  const qs = params.toString();
+  return getJson<ArtworkListResponse>('/artworks' + (qs ? `?${qs}` : ''));
 }
 
-export async function fetchArtwork(id: number | string): Promise<Artwork> {
-  const url = `${BASE}/artworks/${id}?fields=${FIELDS}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Art API ${res.status}`);
-  const json = await res.json();
-  return json.data as Artwork;
+export function fetchArtwork(id: number | string): Promise<Artwork> {
+  return getJson<Artwork>(`/artworks/${id}`);
+}
+
+export function fetchFeatured(): Promise<Artwork> {
+  return getJson<Artwork>('/featured');
 }
 
 /**
- * Period filter buckets. Date is the *start* year.
+ * Period filter buckets, matching the backend's `period=` query param.
  */
 export const PERIODS = [
-  { label: 'All', start: null, end: null },
-  { label: '1600s', start: 1600, end: 1699 },
-  { label: '1700s', start: 1700, end: 1799 },
-  { label: '1800s', start: 1800, end: 1899 },
-  { label: '1900s', start: 1900, end: 1999 },
+  { label: 'All', value: null },
+  { label: '1600s', value: 1600 },
+  { label: '1700s', value: 1700 },
+  { label: '1800s', value: 1800 },
+  { label: '1900s', value: 1900 },
 ] as const;
-
-export function filterByPeriod(
-  arts: Artwork[],
-  period: { start: number | null; end: number | null }
-): Artwork[] {
-  if (period.start == null) return arts;
-  return arts.filter(
-    (a) => a.date_start != null && a.date_start >= period.start! && a.date_start <= period.end!
-  );
-}

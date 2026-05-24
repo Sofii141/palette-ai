@@ -1,37 +1,55 @@
-# 🎨 Palette AI
+# Palette AI
 
-A beautiful virtual art museum app — explore paintings from around the world and read the stories behind them.
+A virtual art museum mobile app — explore paintings from around the world and read the stories behind them.
 
-Full-stack application with **React Native + Expo** (frontend) and planned **Node + Express + Postgres** (backend).
+Full-stack project:
+- **frontend/** — React Native + Expo (mobile app) and a live HTML preview
+- **backend/** — Node + Express API that proxies the Art Institute of Chicago public API
 
-## 📂 Project structure
+## Quick start
 
-```
-palette-ai/
-├── frontend/          ← React Native + Expo app
-│   ├── app/
-│   ├── components/
-│   ├── services/
-│   ├── theme/
-│   ├── package.json
-│   └── README.md
-└── backend/           ← Coming soon: Node + Express + Postgres
-```
-
-## 🚀 Frontend setup
+In two terminals:
 
 ```bash
+# Terminal 1 — backend
+cd backend
+npm install
+npm start
+# → http://localhost:3001
+
+# Terminal 2 — mobile app (optional, for the real RN build)
 cd frontend
 npm install
 npm start
 ```
 
-Then download **Expo Go** and scan the QR code in your terminal. See `frontend/README.md` for details.
+To see the **web preview** with real data from the API:
+open `http://localhost:3001/preview.html` once the backend is running.
 
-## 🛣 Roadmap
+## Project structure
 
-- ✅ Frontend v1 (Home, Gallery, Detail screens)
-- [ ] Backend (user accounts, favorites)
-- [ ] Search
+```
+palette-ai/
+├── backend/                 Node + Express + AIC proxy
+│   ├── server.js
+│   ├── package.json
+│   └── README.md
+├── frontend/                React Native + Expo
+│   ├── app/                 Expo Router screens
+│   ├── components/
+│   ├── services/artApi.ts   Calls the backend
+│   ├── theme/
+│   ├── preview.html         Web preview (works without RN setup)
+│   └── package.json
+└── README.md
+```
+
+## Roadmap
+
+- [x] Frontend v1 (Home, Gallery, Detail)
+- [x] Backend with AIC API proxy + caching
+- [ ] Favorites (requires persistent storage — Postgres)
+- [ ] User accounts (JWT)
+- [ ] Search by artist / keyword
 - [ ] Audio guide
-- [ ] AR/VR view
+- [ ] AR / VR view

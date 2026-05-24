@@ -1,545 +1,746 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Palette AI - Preview</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palette AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #EFEAE0;
+    --bg-elevated: #F7F3E9;
+    --surface: #FBF8F1;
+    --surface-tint: #E8E1D2;
+    --text: #1F1E1A;
+    --text-secondary: #4A4940;
+    --text-muted: #7A7868;
+    --text-inverse: #FBF8F1;
+    --accent: #3D4A2C;
+    --accent-hover: #4F5E39;
+    --gold: #A88A4E;
+    --border: rgba(31,30,26,0.10);
+    --border-strong: rgba(31,30,26,0.18);
+    --shadow: rgba(61,74,44,0.15);
+  }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #2A2825;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 
-    body {
-      font-family: 'Inter', sans-serif;
-      background: #EFEAE0;
-      color: #1F1E1A;
-      overflow: hidden;
-    }
+  /* ----- Phone frame ----- */
+  .stage {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .phone {
+    width: 390px;
+    height: 800px;
+    border-radius: 48px;
+    background: var(--bg);
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 0 0 12px #1a1815,
+      0 0 0 13px #444,
+      0 30px 80px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+  }
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 130px;
+    height: 28px;
+    background: #1a1815;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+    z-index: 100;
+  }
 
-    .phone-frame {
-      width: 375px;
-      height: 812px;
-      border: 12px solid #333;
-      border-radius: 45px;
-      overflow: hidden;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      background: #EFEAE0;
-      display: flex;
-      flex-direction: column;
-    }
+  /* ----- Screens ----- */
+  .screen {
+    flex: 1;
+    overflow-y: auto;
+    display: none;
+    flex-direction: column;
+    padding-top: 38px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .screen.active { display: flex; }
+  .screen::-webkit-scrollbar { width: 3px; }
+  .screen::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
-    .notch {
-      height: 28px;
-      background: #333;
-      border-radius: 0 0 20px 20px;
-      width: 150px;
-      margin: 0 auto;
-    }
+  /* ----- Top bar ----- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px 12px;
+  }
+  .topbar-text {
+    font-size: 11px;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .icon-btn {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text);
+  }
+  .icon-btn svg { width: 100%; height: 100%; stroke: currentColor; }
 
-    .screen {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      background: #EFEAE0;
-    }
+  /* ----- Logo stamp ----- */
+  .logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .logo-circle {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    border: 1px solid var(--text);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .logo-circle::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border: 0.5px solid var(--text);
+    border-radius: 50%;
+  }
+  .logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    letter-spacing: 5px;
+    margin-top: 6px;
+  }
+  .logo-tagline {
+    font-size: 8px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
 
-    .screen::-webkit-scrollbar {
-      width: 4px;
-    }
-    .screen::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .screen::-webkit-scrollbar-thumb {
-      background: rgba(31,30,26,0.2);
-      border-radius: 2px;
-    }
+  /* ----- Arch frame ----- */
+  .arch {
+    background: var(--surface-tint);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 12px 24px var(--shadow);
+  }
+  .arch img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .arch.loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
 
-    /* HOME SCREEN */
-    .screen.home {
-      align-items: center;
-      justify-content: center;
-    }
+  /* ----- HOME ----- */
+  .home-hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 24px 24px;
+  }
+  .home-arch {
+    width: 220px; height: 300px;
+    border-top-left-radius: 110px;
+    border-top-right-radius: 110px;
+    border-bottom-left-radius: 110px;
+    border-bottom-right-radius: 110px;
+    margin: 24px 0 32px;
+  }
+  .home-brand {
+    font-family: 'Playfair Display', serif;
+    font-size: 56px;
+    letter-spacing: 6px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .home-subtitle {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.4;
+    margin-top: 12px;
+  }
+  .btn-primary {
+    margin-top: 28px;
+    padding: 14px 32px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-size: 11px;
+    letter-spacing: 3px;
+    font-weight: 500;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: transform .15s, background .2s;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-primary svg { width: 14px; height: 14px; }
+  .featured-caption {
+    margin-top: 36px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-strong);
+    text-align: center;
+    width: 100%;
+  }
+  .eyebrow {
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .featured-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 700;
+    font-size: 20px;
+    line-height: 1.2;
+  }
+  .featured-artist {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
 
-    .top-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 24px 16px;
-      width: 100%;
-      position: sticky;
-      top: 0;
-      background: #EFEAE0;
-      z-index: 10;
-    }
+  /* ----- GALLERY ----- */
+  .gallery-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 36px;
+    letter-spacing: 8px;
+    text-align: center;
+    padding: 12px 0 16px;
+  }
+  .chips {
+    display: flex;
+    gap: 14px;
+    padding: 0 24px 16px;
+    overflow-x: auto;
+    align-items: center;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 4px 2px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    transition: color .15s;
+  }
+  .chip.active {
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 6px;
+  }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 16px;
+    padding: 8px 24px 32px;
+  }
+  .card { cursor: pointer; transition: transform .15s; }
+  .card:active { transform: scale(0.98); }
+  .card .arch {
+    width: 100%; aspect-ratio: 0.72;
+    border-top-left-radius: 50%;
+    border-top-right-radius: 50%;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+  }
+  .card-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 700;
+    font-size: 14px;
+    margin-top: 10px;
+    line-height: 1.25;
+    color: var(--text);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .card-date {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .gallery-empty, .gallery-loading {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-muted);
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+  }
 
-    .top-bar-left {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      letter-spacing: 2px;
-      font-weight: 500;
-      text-transform: uppercase;
-    }
+  /* ----- DETAIL ----- */
+  .detail-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+  }
+  .detail-center {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .detail-period {
+    font-size: 11px;
+    letter-spacing: 2px;
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .detail-title-top {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 700;
+    font-size: 16px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .detail-hero-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 16px 32px 0;
+  }
+  .detail-hero {
+    width: 100%; aspect-ratio: 0.78;
+    border-top-left-radius: 50%;
+    border-top-right-radius: 50%;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+  }
+  .meta {
+    padding: 24px 32px 0;
+  }
+  .meta-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 4px 0;
+  }
+  .meta-label {
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    width: 70px;
+    flex-shrink: 0;
+    font-weight: 500;
+    padding-top: 2px;
+  }
+  .meta-value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 15px;
+    line-height: 1.35;
+    color: var(--text);
+    flex: 1;
+  }
+  .story {
+    padding: 24px 32px 16px;
+    margin-top: 16px;
+  }
+  .story-divider {
+    width: 32px;
+    height: 1px;
+    background: var(--border-strong);
+    margin-bottom: 16px;
+  }
+  .story-text {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+  }
+  .story-text.clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 8;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .read-more {
+    margin-top: 14px;
+    font-size: 11px;
+    letter-spacing: 2.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .cta-wrap {
+    padding: 24px 32px 40px;
+  }
+  .btn-stretch {
+    width: 100%;
+    justify-content: center;
+  }
 
-    .logo {
-      width: 56px;
-      height: 56px;
-      border: 1.2px solid #1F1E1A;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      font-weight: bold;
-    }
-
-    .top-bar-right {
-      display: flex;
-      gap: 16px;
-      align-items: center;
-    }
-
-    .hero-content {
-      text-align: center;
-      padding: 0 24px;
-      margin-bottom: 40px;
-    }
-
-    .arch-frame {
-      width: 220px;
-      height: 300px;
-      border-radius: 110px 110px 14px 14px;
-      background: linear-gradient(135deg, #D4AF6B 0%, #A88A4E 100%);
-      box-shadow: 0 12px 24px rgba(61,74,44,0.15);
-      margin: 0 auto 32px;
-      overflow: hidden;
-    }
-
-    .arch-frame img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .brand-title {
-      font-family: 'Playfair Display', serif;
-      font-size: 48px;
-      font-weight: 700;
-      letter-spacing: 4px;
-      margin-bottom: 8px;
-    }
-
-    .subtitle {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 18px;
-      font-style: italic;
-      color: #4A4940;
-      line-height: 1.3;
-      margin-bottom: 24px;
-    }
-
-    .btn {
-      display: inline-block;
-      padding: 14px 28px;
-      border-radius: 999px;
-      font-weight: 500;
-      font-size: 11px;
-      letter-spacing: 2.5px;
-      text-transform: uppercase;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-      text-decoration: none;
-    }
-
-    .btn-primary {
-      background: #3D4A2C;
-      color: #FBF8F1;
-    }
-
-    .btn-primary:hover {
-      background: #4F5E39;
-      transform: scale(0.98);
-    }
-
-    /* GALLERY SCREEN */
-    .screen.gallery {
-      padding-bottom: 40px;
-    }
-
-    .gallery-title {
-      font-family: 'Playfair Display', serif;
-      font-size: 36px;
-      letter-spacing: 8px;
-      text-align: center;
-      padding: 24px 0;
-    }
-
-    .chips {
-      display: flex;
-      gap: 12px;
-      padding: 0 24px 16px;
-      overflow-x: auto;
-      scroll-behavior: smooth;
-    }
-
-    .chips::-webkit-scrollbar {
-      height: 4px;
-    }
-
-    .chip {
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-size: 14px;
-      white-space: nowrap;
-      cursor: pointer;
-      border: none;
-      background: none;
-      font-family: 'Cormorant Garamond', serif;
-      font-weight: 500;
-      color: #7A7868;
-      transition: all 0.2s;
-    }
-
-    .chip.active {
-      color: #1F1E1A;
-      border-bottom: 1px solid #1F1E1A;
-      font-weight: 700;
-    }
-
-    .gallery-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      padding: 0 16px;
-    }
-
-    .gallery-card {
-      cursor: pointer;
-    }
-
-    .gallery-card .arch-frame {
-      width: 100%;
-      height: 180px;
-      margin-bottom: 12px;
-    }
-
-    .card-title {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 16px;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-
-    .card-date {
-      font-size: 11px;
-      color: #7A7868;
-      letter-spacing: 1.5px;
-    }
-
-    /* DETAIL SCREEN */
-    .screen.detail {
-      padding-bottom: 40px;
-    }
-
-    .detail-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 24px;
-      border-bottom: 1px solid rgba(31,30,26,0.1);
-    }
-
-    .detail-header-center {
-      text-align: center;
-      flex: 1;
-    }
-
-    .period-tag {
-      font-size: 12px;
-      letter-spacing: 2px;
-      font-weight: 500;
-      text-decoration: underline;
-      color: #1F1E1A;
-      margin-bottom: 4px;
-    }
-
-    .detail-title {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 18px;
-      font-weight: 700;
-      max-width: 70%;
-      margin: 0 auto;
-    }
-
-    .detail-hero {
-      padding: 24px;
-      display: flex;
-      justify-content: center;
-    }
-
-    .detail-hero .arch-frame {
-      width: 280px;
-      height: 365px;
-    }
-
-    .metadata {
-      padding: 0 32px;
-      margin-top: 32px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .meta-row {
-      display: flex;
-      gap: 16px;
-    }
-
-    .meta-label {
-      font-size: 12px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: #7A7868;
-      width: 90px;
-      flex-shrink: 0;
-      font-weight: 500;
-    }
-
-    .meta-value {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 16px;
-      flex: 1;
-      line-height: 1.35;
-    }
-
-    .description-wrap {
-      padding: 0 32px;
-      margin-top: 32px;
-    }
-
-    .divider {
-      width: 32px;
-      height: 1px;
-      background: rgba(31,30,26,0.18);
-      margin-bottom: 16px;
-    }
-
-    .eyebrow {
-      font-size: 12px;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      color: #7A7868;
-      margin-bottom: 12px;
-    }
-
-    .description-text {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 17px;
-      line-height: 1.6;
-      color: #4A4940;
-    }
-
-    /* SCREEN SWITCHER */
-    .screen-switcher {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      display: flex;
-      gap: 8px;
-      z-index: 100;
-      background: rgba(0,0,0,0.7);
-      padding: 8px;
-      border-radius: 20px;
-    }
-
-    .screen-switcher button {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      border: none;
-      cursor: pointer;
-      background: rgba(255,255,255,0.2);
-      color: white;
-      font-weight: bold;
-      transition: all 0.2s;
-    }
-
-    .screen-switcher button.active {
-      background: #3D4A2C;
-      color: white;
-    }
-
-    .screen-switcher button:hover {
-      background: rgba(255,255,255,0.3);
-    }
-
-    /* HIDDEN BY DEFAULT */
-    .screen { display: none !important; }
-    .screen.active { display: flex !important; }
-
-    .hidden { display: none; }
-  </style>
+  /* ----- Stage instructions (outside phone) ----- */
+  .stage-hint {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    color: rgba(255,255,255,0.6);
+    font-size: 12px;
+    letter-spacing: 1px;
+    line-height: 1.6;
+    max-width: 240px;
+  }
+  .stage-hint strong { color: white; }
+  .stage-hint .status {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    margin-right: 6px;
+  }
+  .stage-hint .status.err { background: #ef4444; }
+</style>
 </head>
 <body>
-  <div class="phone-frame">
-    <div class="notch"></div>
+<div class="stage">
+  <div class="stage-hint">
+    <div><strong>Palette AI</strong> &mdash; live preview</div>
+    <div style="margin-top:8px;">
+      <span class="status" id="api-status"></span>
+      <span id="api-status-text">connecting&hellip;</span>
+    </div>
+    <div style="margin-top:8px;">Tap the painting / button to navigate.</div>
+  </div>
 
-    <!-- HOME SCREEN -->
-    <div class="screen home active">
-      <div class="top-bar">
-        <div class="top-bar-left">📍 Art Piece Museum</div>
-        <div style="color: #1F1E1A;">☰</div>
+  <div class="phone">
+
+    <!-- HOME -->
+    <section class="screen active" id="screen-home">
+      <div class="topbar">
+        <div class="topbar-text">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Art Piece Museum
+        </div>
+        <button class="icon-btn" onclick="toggleTheme()" aria-label="theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
       </div>
 
-      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px;">
-        <div class="arch-frame" style="background: linear-gradient(135deg, #C4A76D 0%, #A88A4E 100%); width: 210px; height: 285px;">
-          <div style="width: 100%; height: 100%; background: linear-gradient(45deg, rgba(0,0,0,0.1), transparent);"></div>
+      <div class="home-hero">
+        <div class="logo">
+          <div class="logo-circle">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="14" cy="9" r="1" fill="currentColor"/><circle cx="16" cy="13" r="1" fill="currentColor"/></svg>
+          </div>
+          <div class="logo-text">PALETTE</div>
+          <div class="logo-tagline">Art &middot; Stories &middot; Museum</div>
         </div>
 
-        <h1 class="brand-title">PALETTE</h1>
-        <p class="subtitle">Virtual museum for world art<br>and the stories behind it</p>
+        <div class="arch home-arch loading" id="home-arch"></div>
 
-        <button class="btn btn-primary" onclick="switchScreen('gallery')">
-          Visit Gallery →
+        <div class="home-brand">PALETTE</div>
+        <div class="home-subtitle">Virtual museum for world art<br>and the stories behind it</div>
+
+        <button class="btn-primary" onclick="show('gallery')">
+          Visit Gallery
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
 
-        <div style="margin-top: 60px; width: 100%; padding: 0 24px;">
-          <div style="border-top: 1px solid rgba(31,30,26,0.18); padding-top: 16px;">
-            <div style="font-size: 11px; color: #7A7868; letter-spacing: 3px; margin-bottom: 8px;">FEATURED · 1832</div>
-            <div class="brand-title" style="font-size: 22px; margin-bottom: 4px;">The Swing</div>
-            <div style="font-family: 'Cormorant Garamond', serif; font-style: italic; color: #4A4940; font-size: 14px;">Eugène Delacroix</div>
+        <div class="featured-caption" id="home-caption">
+          <div class="eyebrow">FEATURED</div>
+          <div class="featured-title">Loading&hellip;</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALLERY -->
+    <section class="screen" id="screen-gallery">
+      <div class="topbar">
+        <button onclick="show('home')" style="font-size:11px;letter-spacing:3px;font-weight:500;">HOME</button>
+        <div class="logo">
+          <div class="logo-circle" style="width:36px;height:36px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="14" cy="9" r="1" fill="currentColor"/><circle cx="16" cy="13" r="1" fill="currentColor"/></svg>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- GALLERY SCREEN -->
-    <div class="screen gallery">
-      <div class="top-bar">
-        <span style="font-size: 12px; letter-spacing: 3px; text-transform: uppercase; font-weight: 500;">HOME</span>
-        <div class="logo" style="width: 42px; height: 42px; font-size: 18px;">🎨</div>
-        <span style="font-size: 12px; letter-spacing: 3px; text-transform: uppercase; font-weight: 500;">ART</span>
+        <div style="font-size:11px;letter-spacing:3px;font-weight:500;">ART</div>
       </div>
 
-      <h2 class="gallery-title">GALLERY</h2>
+      <h1 class="gallery-title">GALLERY</h1>
 
-      <div class="chips">
-        <button class="chip active" onclick="filterPeriod(0)">All</button>
-        <button class="chip" onclick="filterPeriod(1)">1600s</button>
-        <button class="chip" onclick="filterPeriod(2)">1700s</button>
-        <button class="chip" onclick="filterPeriod(3)">1800s</button>
-        <button class="chip" onclick="filterPeriod(4)">1900s</button>
+      <div class="chips" id="chips"></div>
+
+      <div id="gallery-content">
+        <div class="gallery-loading">Loading the collection&hellip;</div>
+      </div>
+    </section>
+
+    <!-- DETAIL -->
+    <section class="screen" id="screen-detail">
+      <div class="detail-top">
+        <button class="icon-btn" onclick="show('gallery')" aria-label="back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <div class="detail-center">
+          <span class="detail-period" id="d-period">&mdash;</span>
+          <span class="detail-title-top" id="d-title-top">&hellip;</span>
+        </div>
+        <a class="icon-btn" id="d-external" target="_blank" aria-label="open at AIC">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
       </div>
 
-      <div class="gallery-grid">
-        <div class="gallery-card" onclick="switchScreen('detail')">
-          <div class="arch-frame" style="background: linear-gradient(135deg, #D4AF6B 0%, #A88A4E 100%);"></div>
-          <div class="card-title">The Birth of Venus</div>
-          <div class="card-date">1485</div>
-        </div>
-
-        <div class="gallery-card">
-          <div class="arch-frame" style="background: linear-gradient(135deg, #B8906E 0%, #9A7B52 100%);"></div>
-          <div class="card-title">Starry Night</div>
-          <div class="card-date">1889</div>
-        </div>
-
-        <div class="gallery-card">
-          <div class="arch-frame" style="background: linear-gradient(135deg, #A89070 0%, #8A7558 100%);"></div>
-          <div class="card-title">Girl Reading</div>
-          <div class="card-date">1659</div>
-        </div>
-
-        <div class="gallery-card">
-          <div class="arch-frame" style="background: linear-gradient(135deg, #C9A961 0%, #A88A4E 100%);"></div>
-          <div class="card-title">The Swing</div>
-          <div class="card-date">1832</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- DETAIL SCREEN -->
-    <div class="screen detail">
-      <div class="detail-header">
-        <span style="font-size: 16px; cursor: pointer;" onclick="switchScreen('gallery')">←</span>
-        <div class="detail-header-center">
-          <div class="period-tag">1800s</div>
-          <div class="detail-title">The Swing</div>
-        </div>
-        <span style="font-size: 16px; cursor: pointer;">↗</span>
+      <div class="detail-hero-wrap">
+        <div class="arch detail-hero loading" id="d-hero"></div>
       </div>
 
-      <div class="detail-hero">
-        <div class="arch-frame" style="background: linear-gradient(135deg, #D4AF6B 0%, #A88A4E 100%);"></div>
+      <div class="meta" id="d-meta"></div>
+
+      <div class="story">
+        <div class="story-divider"></div>
+        <div class="eyebrow">The Story</div>
+        <div class="story-text clamped" id="d-story">&hellip;</div>
+        <button class="read-more" id="d-toggle" style="display:none;" onclick="toggleStory()">READ MORE</button>
       </div>
 
-      <div class="metadata">
-        <div class="meta-row">
-          <div class="meta-label">When:</div>
-          <div class="meta-value">1832</div>
-        </div>
-        <div class="meta-row">
-          <div class="meta-label">Artist:</div>
-          <div class="meta-value">Eugène Delacroix</div>
-        </div>
-        <div class="meta-row">
-          <div class="meta-label">Place:</div>
-          <div class="meta-value">Paris, France</div>
-        </div>
-        <div class="meta-row">
-          <div class="meta-label">Medium:</div>
-          <div class="meta-value">Oil on Panel</div>
-        </div>
-        <div class="meta-row">
-          <div class="meta-label">Period:</div>
-          <div class="meta-value">Romantic</div>
-        </div>
+      <div class="cta-wrap">
+        <a class="btn-primary btn-stretch" id="d-cta" target="_blank">
+          View at the Museum
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+        </a>
       </div>
+    </section>
 
-      <div class="description-wrap">
-        <div class="divider"></div>
-        <div class="eyebrow">THE STORY</div>
-        <div class="description-text">
-          In the history of painting, Jean-Honoré Fragonard's The Swing (1767) is unmatched in its frivolity and gaiety over the Top romance. At the center of the work, a young woman, suspended in a moment of being, floating above the ground on a crimson-cushioned swing. She flings her kitten-heeled shoe toward a sculpted putto below the swing.
-        </div>
-      </div>
-    </div>
   </div>
+</div>
 
-  <div class="screen-switcher">
-    <button class="active" onclick="switchScreen('home')">1</button>
-    <button onclick="switchScreen('gallery')">2</button>
-    <button onclick="switchScreen('detail')">3</button>
-  </div>
+<script>
+// ---------- API ----------
+const API = location.port === '3001' ? '/api' : 'http://localhost:3001/api';
 
-  <script>
-    function switchScreen(name) {
-      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-      document.querySelector('.screen.' + name).classList.add('active');
+async function fetchJson(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error('API ' + res.status);
+  return res.json();
+}
 
-      document.querySelectorAll('.screen-switcher button').forEach((b, i) => {
-        b.classList.remove('active');
-      });
-      const idx = ['home', 'gallery', 'detail'].indexOf(name);
-      document.querySelectorAll('.screen-switcher button')[idx].classList.add('active');
+function setApiStatus(ok, text) {
+  const dot = document.getElementById('api-status');
+  dot.classList.toggle('err', !ok);
+  document.getElementById('api-status-text').textContent = text;
+}
+
+// ---------- Navigation ----------
+function show(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+// ---------- Home ----------
+async function loadHome() {
+  try {
+    const art = await fetchJson('/featured');
+    const arch = document.getElementById('home-arch');
+    arch.classList.remove('loading');
+    arch.innerHTML = `<img src="${art.image}" alt="${art.title}">`;
+    document.getElementById('home-caption').innerHTML = `
+      <div class="eyebrow">FEATURED &middot; ${art.date || ''}</div>
+      <div class="featured-title">${art.title}</div>
+      <div class="featured-artist">${art.artist}</div>
+    `;
+    setApiStatus(true, 'connected to backend');
+  } catch (e) {
+    setApiStatus(false, 'backend offline');
+    console.error(e);
+  }
+}
+
+// ---------- Gallery ----------
+const PERIODS = [
+  { label: 'All', value: null },
+  { label: '1600s', value: 1600 },
+  { label: '1700s', value: 1700 },
+  { label: '1800s', value: 1800 },
+  { label: '1900s', value: 1900 },
+];
+let currentPeriod = 0;
+let galleryItems = [];
+
+function renderChips() {
+  const el = document.getElementById('chips');
+  el.innerHTML = PERIODS.map((p, i) =>
+    `<button class="chip ${i === currentPeriod ? 'active' : ''}" data-i="${i}">${p.label}</button>`
+  ).join('');
+  el.querySelectorAll('.chip').forEach(c => {
+    c.onclick = () => {
+      currentPeriod = Number(c.dataset.i);
+      renderChips();
+      loadGallery();
+    };
+  });
+}
+
+async function loadGallery() {
+  const wrap = document.getElementById('gallery-content');
+  wrap.innerHTML = '<div class="gallery-loading">Loading the collection&hellip;</div>';
+  try {
+    const period = PERIODS[currentPeriod].value;
+    const q = period ? `?period=${period}&limit=20` : '?limit=20';
+    const json = await fetchJson('/artworks' + q);
+    galleryItems = json.data;
+    if (!galleryItems.length) {
+      wrap.innerHTML = '<div class="gallery-empty">No artworks for this period.</div>';
+      return;
     }
+    wrap.innerHTML = '<div class="gallery-grid">' + galleryItems.map(a => `
+      <div class="card" data-id="${a.id}">
+        <div class="arch"><img src="${a.thumbnail}" alt="${a.title}" loading="lazy"></div>
+        <div class="card-title">${a.title}</div>
+        <div class="card-date">${a.date || ''}</div>
+      </div>
+    `).join('') + '</div>';
+    wrap.querySelectorAll('.card').forEach(card => {
+      card.onclick = () => openDetail(Number(card.dataset.id));
+    });
+  } catch (e) {
+    wrap.innerHTML = '<div class="gallery-empty">Could not reach the backend.<br>Make sure it is running.</div>';
+    console.error(e);
+  }
+}
 
-    function filterPeriod(idx) {
-      document.querySelectorAll('.chip').forEach((c, i) => {
-        c.classList.toggle('active', i === idx);
-      });
+// ---------- Detail ----------
+async function openDetail(id) {
+  show('detail');
+  const hero = document.getElementById('d-hero');
+  hero.classList.add('loading');
+  hero.innerHTML = '';
+  document.getElementById('d-meta').innerHTML = '';
+  document.getElementById('d-story').textContent = 'Loading the story...';
+  document.getElementById('d-toggle').style.display = 'none';
+
+  try {
+    const art = await fetchJson('/artworks/' + id);
+    hero.classList.remove('loading');
+    hero.innerHTML = `<img src="${art.imageLarge || art.image}" alt="${art.title}">`;
+    document.getElementById('d-title-top').textContent = art.title;
+    const century = art.dateStart != null ? `${Math.floor(art.dateStart / 100) + 1}00s` : '';
+    document.getElementById('d-period').textContent = century;
+    document.getElementById('d-external').href = art.aicUrl;
+    document.getElementById('d-cta').href = art.aicUrl;
+
+    document.getElementById('d-meta').innerHTML = [
+      ['When', art.date],
+      ['Artist', art.artist],
+      ['Place', art.place],
+      ['Medium', art.medium],
+      ['Period', art.style || art.classification],
+      ['Status', art.onView ? `On view &middot; ${art.gallery || 'AIC'}` : 'In archive'],
+    ].filter(([_, v]) => v).map(([k, v]) =>
+      `<div class="meta-row"><div class="meta-label">${k}</div><div class="meta-value">${v}</div></div>`
+    ).join('');
+
+    const story = art.description || `${art.title} by ${art.artistFull}. ${art.medium || ''}`;
+    const storyEl = document.getElementById('d-story');
+    storyEl.textContent = story;
+    storyEl.classList.add('clamped');
+    if (story.length > 320) {
+      document.getElementById('d-toggle').style.display = 'inline-block';
+      document.getElementById('d-toggle').textContent = 'READ MORE';
     }
-  </script>
+  } catch (e) {
+    hero.classList.remove('loading');
+    document.getElementById('d-story').textContent = 'Could not load this artwork.';
+    console.error(e);
+  }
+}
+
+function toggleStory() {
+  const el = document.getElementById('d-story');
+  const btn = document.getElementById('d-toggle');
+  el.classList.toggle('clamped');
+  btn.textContent = el.classList.contains('clamped') ? 'READ MORE' : 'READ LESS';
+}
+
+// ---------- Theme toggle (light/dark) ----------
+let darkMode = false;
+function toggleTheme() {
+  darkMode = !darkMode;
+  const r = document.documentElement.style;
+  if (darkMode) {
+    r.setProperty('--bg', '#1A1815');
+    r.setProperty('--bg-elevated', '#232120');
+    r.setProperty('--surface', '#2A2724');
+    r.setProperty('--surface-tint', '#332F2A');
+    r.setProperty('--text', '#F0EBE0');
+    r.setProperty('--text-secondary', '#C9C3B5');
+    r.setProperty('--text-muted', '#8A8675');
+    r.setProperty('--accent', '#C9A961');
+    r.setProperty('--accent-hover', '#DBBC73');
+    r.setProperty('--gold', '#D4B97A');
+    r.setProperty('--border', 'rgba(240,235,224,0.10)');
+    r.setProperty('--border-strong', 'rgba(240,235,224,0.20)');
+  } else {
+    r.removeProperty('--bg'); r.removeProperty('--bg-elevated');
+    r.removeProperty('--surface'); r.removeProperty('--surface-tint');
+    r.removeProperty('--text'); r.removeProperty('--text-secondary');
+    r.removeProperty('--text-muted'); r.removeProperty('--accent');
+    r.removeProperty('--accent-hover'); r.removeProperty('--gold');
+    r.removeProperty('--border'); r.removeProperty('--border-strong');
+  }
+}
+
+// ---------- Boot ----------
+renderChips();
+loadHome();
+loadGallery();
+</script>
 </body>
 </html>
