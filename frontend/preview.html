@@ -701,6 +701,121 @@
     padding-left: 38px;
   }
 
+  /* Share button (paired with heart on detail) — sits at the LEFT bottom
+     corner of the painting, mirroring the heart on the right. */
+  .share-btn {
+    position: absolute;
+    bottom: -16px;
+    left: 50%;
+    transform: translateX(-160px) translateX(-50%);
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 6px 16px var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+  .share-btn:active { transform: translateX(-160px) translateX(-50%) scale(0.9); }
+  .share-btn svg { width: 20px; height: 20px; stroke: var(--text); fill: none; }
+
+  /* ----- SHARE CARD OVERLAY ----- */
+  .share-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(8px);
+  }
+  .share-overlay.open { display: flex; }
+  .share-modal {
+    background: var(--bg);
+    border-radius: 24px;
+    padding: 24px;
+    max-width: 460px;
+    width: 92%;
+    max-height: 92vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .share-modal-title {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 22px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .share-modal-sub {
+    font-family: 'Cormorant Garamond', serif;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  #share-canvas {
+    max-width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  }
+  .share-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    width: 100%;
+  }
+  .share-actions button {
+    flex: 1;
+  }
+
+  /* ----- COLOR PALETTE swatches ----- */
+  .palette-row {
+    display: flex;
+    gap: 6px;
+    padding: 0 32px;
+    margin-top: 14px;
+    margin-bottom: 4px;
+  }
+  .palette-swatch {
+    flex: 1;
+    height: 36px;
+    border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.05);
+    cursor: pointer;
+    transition: transform .15s;
+    position: relative;
+  }
+  .palette-swatch:hover { transform: translateY(-2px); }
+  .palette-swatch[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .palette-swatch:hover[data-tip]::after { opacity: 1; }
+  .palette-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 500;
+    padding: 0 32px;
+    margin-top: 4px;
+  }
+
   /* Inline note preview on Favorites cards */
   .fav-note {
     margin-top: 6px;
@@ -1027,7 +1142,18 @@
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
         </button>
+        <button class="share-btn" id="d-share" onclick="openShareCard()" aria-label="share">
+          <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+        </button>
       </div>
+
+      <!-- Color palette swatches -->
+      <div class="palette-row" id="d-palette" style="display:none;"></div>
+      <div class="palette-label" id="d-palette-label" style="display:none;">DOMINANT COLORS</div>
 
       <div class="meta" id="d-meta"></div>
 
@@ -1125,6 +1251,22 @@
         </div>
       </div>
     </section>
+
+    <!-- SHARE CARD OVERLAY -->
+    <div class="share-overlay" id="share-overlay" onclick="if(event.target.id==='share-overlay') closeShareCard()">
+      <div class="share-modal">
+        <div class="share-modal-title">Share this moment</div>
+        <div class="share-modal-sub">A card with the painting and your interpretation</div>
+        <canvas id="share-canvas" width="1080" height="1350"></canvas>
+        <div class="share-actions">
+          <button class="btn-ghost" style="padding:12px 18px;border-radius:999px;border:1px solid var(--border-strong);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text);" onclick="closeShareCard()">Close</button>
+          <button class="btn-primary" style="margin-top:0;" onclick="downloadShareCard()">
+            Download
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- BOTTOM NAVBAR -->
     <nav class="navbar" id="navbar">
@@ -1384,7 +1526,7 @@ async function loadGallery() {
       </div>
     `).join('') + '</div>';
     wrap.querySelectorAll('.card').forEach(card => {
-      card.onclick = () => openDetail(Number(card.dataset.id));
+      card.onclick = () => openDetail(card.dataset.id);
     });
   } catch {
     wrap.innerHTML = '<div class="gallery-empty">Could not reach the backend.</div>';
@@ -1439,6 +1581,8 @@ async function openDetail(id) {
 
     // Load community interpretations (in parallel with the rest of the screen)
     loadInterpretations(art.id);
+    // Extract dominant color palette from the image (client-side, no API)
+    loadPalette(art);
   } catch {
     hero.classList.remove('loading');
     document.getElementById('d-story').textContent = 'Could not load this artwork.';
@@ -1454,7 +1598,7 @@ function toggleStory() {
 
 function updateHeartBtn(id) {
   const btn = document.getElementById('d-heart');
-  btn.classList.toggle('active', favIds.has(Number(id)));
+  btn.classList.toggle('active', favIds.has(String(id)));
 }
 
 async function toggleFavorite() {
@@ -1592,6 +1736,237 @@ function escapeHtml(s) {
 }
 
 // =====================================================================
+// Color Palette Extractor — pulls dominant colors from the painting image
+// =====================================================================
+
+/**
+ * Cheap dominant-color extraction:
+ * 1. Draw image small (100x100) onto a hidden canvas
+ * 2. Read every pixel
+ * 3. Quantize to a coarse 4-bit-per-channel bucket
+ * 4. Count occurrences, return the top N buckets as hex colors
+ */
+async function extractPalette(imgUrl, count = 5) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => resolve([]);
+    img.onload = () => {
+      try {
+        const SIZE = 96;
+        const c = document.createElement('canvas');
+        c.width = SIZE; c.height = SIZE;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, SIZE, SIZE);
+        const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
+        const buckets = new Map();
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+          if (a < 200) continue;
+          // Quantize to 5-bit buckets (32 levels per channel)
+          const r = data[i]     & 0b11111000;
+          const g = data[i + 1] & 0b11111000;
+          const b = data[i + 2] & 0b11111000;
+          // Skip near-blacks and near-whites to find the painterly colors
+          const lum = 0.299*r + 0.587*g + 0.114*b;
+          if (lum < 20 || lum > 240) continue;
+          const key = (r << 16) | (g << 8) | b;
+          buckets.set(key, (buckets.get(key) || 0) + 1);
+        }
+        // Sort by frequency and pick the most distinct top N
+        const sorted = [...buckets.entries()].sort((a, b) => b[1] - a[1]);
+        const picked = [];
+        for (const [key] of sorted) {
+          const r = (key >> 16) & 0xff;
+          const g = (key >> 8) & 0xff;
+          const b = key & 0xff;
+          // Reject if too close to an already-picked color
+          const tooClose = picked.some(([pr, pg, pb]) =>
+            Math.abs(pr - r) + Math.abs(pg - g) + Math.abs(pb - b) < 60
+          );
+          if (!tooClose) picked.push([r, g, b]);
+          if (picked.length >= count) break;
+        }
+        resolve(picked.map(([r, g, b]) =>
+          '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')
+        ));
+      } catch {
+        resolve([]); // CORS or other failure — silently skip
+      }
+    };
+    img.src = imgUrl;
+  });
+}
+
+/** Route an external image through our backend so canvas can read its pixels. */
+function proxiedImage(url) {
+  if (!url) return url;
+  return API + '/image-proxy?url=' + encodeURIComponent(url);
+}
+
+async function loadPalette(art) {
+  const row = document.getElementById('d-palette');
+  const label = document.getElementById('d-palette-label');
+  row.style.display = 'none';
+  label.style.display = 'none';
+  row.innerHTML = '';
+  // Use the thumbnail (smaller = faster) routed through our CORS-enabled proxy
+  const colors = await extractPalette(proxiedImage(art.thumbnail || art.image));
+  if (!colors.length) return;
+  row.innerHTML = colors.map(c =>
+    `<div class="palette-swatch" style="background:${c}" data-tip="${c.toUpperCase()}"></div>`
+  ).join('');
+  row.style.display = 'flex';
+  label.style.display = 'block';
+}
+
+// =====================================================================
+// Share Card — generates an Instagram-ready PNG with the painting + note
+// =====================================================================
+function openShareCard() {
+  if (!currentArt) return;
+  document.getElementById('share-overlay').classList.add('open');
+  drawShareCard();
+}
+function closeShareCard() {
+  document.getElementById('share-overlay').classList.remove('open');
+}
+
+async function drawShareCard() {
+  const canvas = document.getElementById('share-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Cream background
+  ctx.fillStyle = '#EFEAE0';
+  ctx.fillRect(0, 0, W, H);
+
+  // Painting area (top half-ish, with arch top)
+  const imgY = 110;
+  const imgH = 720;
+  const imgW = 720;
+  const imgX = (W - imgW) / 2;
+
+  // Draw arch-shaped clip mask
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(imgX, imgY + imgW / 2);
+  ctx.arc(imgX + imgW / 2, imgY + imgW / 2, imgW / 2, Math.PI, 0, false);
+  ctx.lineTo(imgX + imgW, imgY + imgH);
+  ctx.lineTo(imgX, imgY + imgH);
+  ctx.closePath();
+  ctx.clip();
+  // Fill arch with surface color first (in case image fails)
+  ctx.fillStyle = '#E8E1D2';
+  ctx.fillRect(imgX, imgY, imgW, imgH);
+  // Image — via proxy so canvas isn't tainted (otherwise toDataURL throws)
+  if (currentArt.image) {
+    await new Promise((res) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const ratio = img.width / img.height;
+        let dw = imgW, dh = imgW / ratio;
+        if (dh < imgH) { dh = imgH; dw = imgH * ratio; }
+        const dx = imgX + (imgW - dw) / 2;
+        const dy = imgY + (imgH - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+        res();
+      };
+      img.onerror = res;
+      img.src = proxiedImage(currentArt.image);
+    });
+  }
+  ctx.restore();
+
+  // Brand mark — small "PALETTE" stamp top
+  ctx.fillStyle = '#1F1E1A';
+  ctx.font = "500 22px 'Inter', sans-serif";
+  ctx.textAlign = 'center';
+  ctx.letterSpacing = '6px';
+  ctx.fillText('— P A L E T T E —', W / 2, 64);
+
+  // Title
+  ctx.fillStyle = '#1F1E1A';
+  ctx.font = "700 52px 'Playfair Display', serif";
+  ctx.textAlign = 'center';
+  const titleY = imgY + imgH + 70;
+  drawWrappedText(ctx, currentArt.title, W / 2, titleY, W - 120, 60, 2);
+
+  // Artist + date (italic serif)
+  ctx.fillStyle = '#4A4940';
+  ctx.font = "italic 30px 'Cormorant Garamond', serif";
+  ctx.fillText(`${currentArt.artist} · ${currentArt.date || ''}`, W / 2, titleY + 75);
+
+  // Divider
+  ctx.fillStyle = 'rgba(31,30,26,0.18)';
+  ctx.fillRect(W/2 - 30, titleY + 110, 60, 1);
+
+  // Interpretation
+  const interpEl = document.getElementById('d-interp-input');
+  const yoursEl = document.querySelector('#d-yours-wrap .interp-text');
+  const interpText = (interpEl && interpEl.value) || (yoursEl && yoursEl.textContent) || '';
+
+  if (interpText.trim()) {
+    ctx.fillStyle = '#3D4A2C';
+    ctx.font = "600 18px 'Inter', sans-serif";
+    ctx.fillText('— MY INTERPRETATION —', W / 2, titleY + 165);
+
+    ctx.fillStyle = '#1F1E1A';
+    ctx.font = "italic 30px 'Cormorant Garamond', serif";
+    drawWrappedText(ctx, '"' + interpText + '"', W / 2, titleY + 215, W - 160, 42, 4);
+  } else {
+    ctx.fillStyle = '#7A7868';
+    ctx.font = "italic 26px 'Cormorant Garamond', serif";
+    ctx.fillText('Discover the story at palette.ai', W / 2, titleY + 195);
+  }
+
+  // Footer
+  ctx.fillStyle = '#7A7868';
+  ctx.font = "500 16px 'Inter', sans-serif";
+  ctx.fillText('SHARED FROM PALETTE · VIRTUAL ART MUSEUM', W / 2, H - 50);
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+  const words = String(text).split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (const w of words) {
+    const trial = current ? current + ' ' + w : w;
+    if (ctx.measureText(trial).width > maxWidth && current) {
+      lines.push(current);
+      current = w;
+      if (lines.length >= maxLines) break;
+    } else {
+      current = trial;
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  if (lines.length === maxLines) {
+    // truncate last line with ellipsis if needed
+    let last = lines[maxLines - 1];
+    while (ctx.measureText(last + '…').width > maxWidth && last.length > 1) {
+      last = last.slice(0, -1);
+    }
+    if (last !== lines[maxLines - 1]) lines[maxLines - 1] = last + '…';
+  }
+  lines.forEach((line, i) => {
+    ctx.fillText(line, x, y + i * lineHeight);
+  });
+}
+
+function downloadShareCard() {
+  const canvas = document.getElementById('share-canvas');
+  const link = document.createElement('a');
+  const safeName = String(currentArt?.title || 'palette')
+    .replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40);
+  link.download = `palette-${safeName}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+// =====================================================================
 // Favorites
 // =====================================================================
 async function loadFavorites() {
@@ -1633,7 +2008,7 @@ async function loadFavorites() {
       </div>
     `).join('') + '</div>';
     wrap.querySelectorAll('.card').forEach(c => {
-      c.onclick = () => openDetail(Number(c.dataset.id));
+      c.onclick = () => openDetail(c.dataset.id);
     });
   } catch {
     wrap.innerHTML = '<div class="gallery-empty">Could not load favorites.</div>';

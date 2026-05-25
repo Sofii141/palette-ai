@@ -40,7 +40,10 @@ export const API_BASE = `http://${pickHost()}:3001/api`;
 // ------- Types -------
 
 export interface Artwork {
-  id: number;
+  /** Composite id like "aic:14655" or "met:436105". */
+  id: string;
+  /** "aic" | "met" — which museum the painting came from. */
+  source: 'aic' | 'met';
   title: string;
   artist: string;
   artistFull: string;
@@ -110,8 +113,8 @@ export function fetchArtworks(opts?: {
   return authedFetch('/artworks' + (qs ? `?${qs}` : ''));
 }
 
-export function fetchArtwork(id: number | string): Promise<Artwork> {
-  return authedFetch(`/artworks/${id}`);
+export function fetchArtwork(id: string): Promise<Artwork> {
+  return authedFetch(`/artworks/${encodeURIComponent(id)}`);
 }
 
 export function fetchFeatured(): Promise<Artwork> {
@@ -126,27 +129,27 @@ export function fetchFavorites(): Promise<{ data: Artwork[] }> {
   return authedFetch('/favorites');
 }
 
-export function fetchFavoriteIds(): Promise<{ ids: number[] }> {
+export function fetchFavoriteIds(): Promise<{ ids: string[] }> {
   return authedFetch('/favorites/ids');
 }
 
-export function addFavorite(id: number) {
-  return authedFetch(`/favorites/${id}`, { method: 'POST' });
+export function addFavorite(id: string) {
+  return authedFetch(`/favorites/${encodeURIComponent(id)}`, { method: 'POST' });
 }
 
-export function removeFavorite(id: number) {
-  return authedFetch(`/favorites/${id}`, { method: 'DELETE' });
+export function removeFavorite(id: string) {
+  return authedFetch(`/favorites/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export function fetchComments(artworkId: number | string): Promise<{
+export function fetchComments(artworkId: string): Promise<{
   yours: Comment | null;
   others: Comment[];
 }> {
-  return authedFetch(`/artworks/${artworkId}/comments`);
+  return authedFetch(`/artworks/${encodeURIComponent(artworkId)}/comments`);
 }
 
-export function postComment(artworkId: number | string, text: string): Promise<Comment> {
-  return authedFetch(`/artworks/${artworkId}/comments`, {
+export function postComment(artworkId: string, text: string): Promise<Comment> {
+  return authedFetch(`/artworks/${encodeURIComponent(artworkId)}/comments`, {
     method: 'POST',
     body: JSON.stringify({ text }),
   });

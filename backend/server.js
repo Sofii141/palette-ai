@@ -466,6 +466,55 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
+ * GET /api/image-proxy?url=...
+ * Re-serves an external image with CORS allowed, so the frontend's <canvas>
+ * can read pixels (for the color-palette extractor and share-card composer).
+ *
+ * Whitelist trusted museum hosts to avoid being an open proxy.
+ */
+const PROXY_ALLOW = [
+  /^https:\/\/www\.artic\.edu\//,
+  /^https:\/\/images\.metmuseum\.org\//,
+  /^https:\/\/collectionapi\.metmuseum\.org\//,
+];
+// AIC's IIIF endpoint sits behind Cloudflare with bot challenges, so we
+// pretend to be a browser. Without these headers we get 403 every time.
+const PROXY_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
+app.get('/api/image-proxy', async (req, res) => {
+  const url = String(req.query.url || '');
+  if (!PROXY_ALLOW.some((re) => re.test(url))) {
+    return res.status(403).json({ error: 'host not allowed' });
+  }
+  try {
+    // Use the museum's own domain as Referer — some CDNs require it
+    const headers = { ...PROXY_HEADERS };
+    if (url.startsWith('https://www.artic.edu/')) headers.Referer = 'https://www.artic.edu/';
+    if (url.startsWith('https://images.metmuseum.org/')) headers.Referer = 'https://www.metmuseum.org/';
+
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      console.warn('[image-proxy] upstream failed', r.status, url.slice(0, 80));
+      return res.status(r.status).end();
+    }
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Content-Type', r.headers.get('content-type') || 'image/jpeg');
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.send(buf);
+  } catch (e) {
+    console.error('[image-proxy] error', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
  * GET /api/filters — discover available filter chips for the UI
  */
 app.get('/api/filters', (req, res) => {
@@ -738,7 +787,8 @@ app.delete('/api/favorites/:id', authMiddleware, (req, res) => {
  * GET /api/favorites/ids — just the id list (lightweight, for hearts state)
  */
 app.get('/api/favorites/ids', authMiddleware, (req, res) => {
-  res.json({ ids: FAVORITES[req.user.username] || [] });
+  const raw = FAVORITES[req.user.username] || [];
+  res.json({ ids: raw.map(normalizeFavId) });
 });
 
 // ---------------------------------------------------------------------------

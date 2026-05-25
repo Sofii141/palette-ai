@@ -53,11 +53,12 @@ export default function ArtworkDetail() {
       try {
         const [a, ids, c] = await Promise.all([
           fetchArtwork(id),
-          fetchFavoriteIds().catch(() => ({ ids: [] as number[] })),
+          fetchFavoriteIds().catch(() => ({ ids: [] as string[] })),
           fetchComments(id).catch(() => ({ yours: null, others: [] as Comment[] })),
         ]);
         setArt(a);
-        setIsFav(ids.ids.includes(Number(id)));
+        // Match either the composite form or a legacy plain number
+        setIsFav(ids.ids.includes(a.id) || ids.ids.includes(`aic:${id}`));
         setYours(c.yours);
         setOthers(c.others);
         if (c.yours) setDraft(c.yours.text);
