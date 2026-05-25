@@ -1,0 +1,39 @@
+{
+  "__pool__": [
+    {
+      "id": "p1",
+      "username": "amelia",
+      "displayName": "Amelia",
+      "text": "Stood in front of this for fifteen minutes. The light catches differently each time.",
+      "createdAt": "2026-05-21T04:04:07.314Z"
+    },
+    {
+      "id": "p2",
+      "username": "mateo",
+      "displayName": "Mateo",
+      "text": "There is a quiet violence in the brushwork that the photographs never capture.",
+      "createdAt": "2026-05-14T04:04:07.316Z"
+    },
+    {
+      "id": "p3",
+      "username": "noor",
+      "displayName": "Noor",
+      "text": "I think about this painting on rainy days. It feels like memory.",
+      "createdAt": "2026-05-04T04:04:07.316Z"
+    },
+    {
+      "id": "p4",
+      "username": "kenji",
+      "displayName": "Kenji",
+      "text": "The composition leads your eye to the smallest detail, then refuses to let go.",
+      "createdAt": "2026-04-25T04:04:07.316Z"
+    },
+    {
+      "id": "p5",
+      "username": "isabel",
+      "displayName": "Isabel",
+      "text": "Saw it in person years ago. Reproductions cannot do the scale justice.",
+      "createdAt": "2026-04-08T04:04:07.316Z"
+    }
+  ]
+}

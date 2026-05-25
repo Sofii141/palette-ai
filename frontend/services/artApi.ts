@@ -1,22 +1,43 @@
 /**
- * Client for the Palette AI backend (`../backend`).
- *
- * The backend normalizes the Art Institute of Chicago payload, so the
- * fields here are the cleaned shape — not the raw AIC shape.
+ * Client for the Palette AI backend (`../../backend`).
  *
  * In dev on a real device you must use your machine's LAN IP instead of
- * localhost, because the phone can't reach the laptop's `localhost`.
- * Update `API_BASE` accordingly.
+ * localhost, because the phone cannot reach the laptop's `localhost`.
+ * Set EXPO_PUBLIC_API_HOST in `.env.local` or just edit `HOST` below.
  */
-
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+import { getToken } from './auth';
 
-// Edit this if you run the backend somewhere else.
-//   - localhost:3001  → web / iOS simulator on same machine
-//   - 10.0.2.2:3001   → Android emulator
-//   - 192.168.x.x:3001 → phone on the same WiFi (use your machine's LAN IP)
-const HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
-export const API_BASE = `http://${HOST}:3001/api`;
+// Try to pick the LAN host from the Expo dev URL automatically.
+// e.g. exp://192.168.1.42:8083 → 192.168.1.42
+function detectLanHost(): string | null {
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
+    (Constants as any).manifest?.debuggerHost ||
+    '';
+  const match = String(hostUri).match(/^([\d.]+):/);
+  return match ? match[1] : null;
+}
+
+function pickHost(): string {
+  // Manual override wins
+  const env = process.env.EXPO_PUBLIC_API_HOST;
+  if (env) return env;
+  if (Platform.OS === 'web') return 'localhost';
+  if (Platform.OS === 'android') {
+    // Android emulator can't reach localhost — use special alias.
+    // For a real device on LAN, detectLanHost will return the laptop IP.
+    return detectLanHost() || '10.0.2.2';
+  }
+  // iOS simulator can use localhost; iOS device needs LAN IP.
+  return detectLanHost() || 'localhost';
+}
+
+export const API_BASE = `http://${pickHost()}:3001/api`;
+
+// ------- Types -------
 
 export interface Artwork {
   id: number;
@@ -43,29 +64,36 @@ export interface Artwork {
 
 export interface ArtworkListResponse {
   data: Artwork[];
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-    total_pages: number;
-    current_page: number;
-  };
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(API_BASE + path);
-  if (!res.ok) throw new Error(`API ${res.status} on ${path}`);
-  return res.json();
+  filters?: { period: string; style: string };
+  pagination: { total: number; limit: number; offset: number; total_pages: number; current_page: number };
 }
 
 export interface FilterOption {
   key: string;
   label: string;
 }
-export interface FiltersResponse {
-  periods: FilterOption[];
-  styles: FilterOption[];
+
+export interface Comment {
+  id: string;
+  username: string;
+  displayName: string;
+  text: string;
+  createdAt: string;
 }
+
+// ------- HTTP helper -------
+
+async function authedFetch(path: string, opts: RequestInit = {}) {
+  const token = await getToken();
+  const headers: any = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  if (!res.ok) throw new Error(`API ${res.status} on ${path}`);
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+// ------- Endpoints -------
 
 export function fetchArtworks(opts?: {
   page?: number;
@@ -79,25 +107,53 @@ export function fetchArtworks(opts?: {
   if (opts?.period && opts.period !== 'all') params.set('period', opts.period);
   if (opts?.style && opts.style !== 'all') params.set('style', opts.style);
   const qs = params.toString();
-  return getJson<ArtworkListResponse>('/artworks' + (qs ? `?${qs}` : ''));
+  return authedFetch('/artworks' + (qs ? `?${qs}` : ''));
 }
 
 export function fetchArtwork(id: number | string): Promise<Artwork> {
-  return getJson<Artwork>(`/artworks/${id}`);
+  return authedFetch(`/artworks/${id}`);
 }
 
 export function fetchFeatured(): Promise<Artwork> {
-  return getJson<Artwork>('/featured');
+  return authedFetch('/featured');
 }
 
-export function fetchFilters(): Promise<FiltersResponse> {
-  return getJson<FiltersResponse>('/filters');
+export function fetchFilters(): Promise<{ periods: FilterOption[]; styles: FilterOption[] }> {
+  return authedFetch('/filters');
 }
 
-/**
- * Fallback filter lists, used until /filters returns. The backend is the
- * source of truth — these mirror what `STYLES` and `PERIODS` look like there.
- */
+export function fetchFavorites(): Promise<{ data: Artwork[] }> {
+  return authedFetch('/favorites');
+}
+
+export function fetchFavoriteIds(): Promise<{ ids: number[] }> {
+  return authedFetch('/favorites/ids');
+}
+
+export function addFavorite(id: number) {
+  return authedFetch(`/favorites/${id}`, { method: 'POST' });
+}
+
+export function removeFavorite(id: number) {
+  return authedFetch(`/favorites/${id}`, { method: 'DELETE' });
+}
+
+export function fetchComments(artworkId: number | string): Promise<{
+  yours: Comment | null;
+  others: Comment[];
+}> {
+  return authedFetch(`/artworks/${artworkId}/comments`);
+}
+
+export function postComment(artworkId: number | string, text: string): Promise<Comment> {
+  return authedFetch(`/artworks/${artworkId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+// ------- Fallback filter lists (until backend responds) -------
+
 export const PERIODS: ReadonlyArray<FilterOption> = [
   { key: 'all',   label: 'All' },
   { key: '1500s', label: '1500s' },
@@ -111,8 +167,16 @@ export const STYLES: ReadonlyArray<FilterOption> = [
   { key: 'all',                label: 'All' },
   { key: 'renaissance',        label: 'Renaissance' },
   { key: 'baroque',            label: 'Baroque' },
+  { key: 'rococo',             label: 'Rococo' },
+  { key: 'neoclassicism',      label: 'Neoclassicism' },
+  { key: 'romanticism',        label: 'Romanticism' },
   { key: 'realism',            label: 'Realism' },
   { key: 'impressionism',      label: 'Impressionism' },
   { key: 'post-impressionism', label: 'Post-Impressionism' },
+  { key: 'expressionism',      label: 'Expressionism' },
+  { key: 'cubism',             label: 'Cubism' },
+  { key: 'surrealism',         label: 'Surrealism' },
   { key: 'modernism',          label: 'Modernism' },
+  { key: 'abstract',           label: 'Abstract Expressionism' },
+  { key: 'pop',                label: 'Pop Art' },
 ];

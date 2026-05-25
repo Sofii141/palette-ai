@@ -9,6 +9,8 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,6 +20,101 @@ app.use(express.json());
 
 // Serve the static preview from /frontend
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+// ---------------------------------------------------------------------------
+// Auth + Favorites (in-memory users, on-disk favorites)
+// ---------------------------------------------------------------------------
+const USERS = {
+  sofi: {
+    username: 'sofi',
+    password: 'sofi', // plaintext on purpose — portfolio demo, not prod
+    displayName: 'Sofi',
+    memberSince: 'May 2026',
+  },
+};
+
+const TOKENS = new Map(); // token -> username
+
+const FAVES_FILE = path.join(__dirname, 'favorites.json');
+let FAVORITES = {}; // username -> array of artwork ids
+try {
+  if (fs.existsSync(FAVES_FILE)) {
+    FAVORITES = JSON.parse(fs.readFileSync(FAVES_FILE, 'utf8'));
+  }
+} catch (e) {
+  console.warn('Could not load favorites file:', e.message);
+}
+function saveFavorites() {
+  try {
+    fs.writeFileSync(FAVES_FILE, JSON.stringify(FAVORITES, null, 2));
+  } catch (e) {
+    console.warn('Could not save favorites:', e.message);
+  }
+}
+
+// COMMENTS: { [artworkId]: [{ id, username, displayName, text, createdAt }] }
+const COMMENTS_FILE = path.join(__dirname, 'comments.json');
+let COMMENTS = {};
+try {
+  if (fs.existsSync(COMMENTS_FILE)) {
+    COMMENTS = JSON.parse(fs.readFileSync(COMMENTS_FILE, 'utf8'));
+  }
+} catch (e) {
+  console.warn('Could not load comments file:', e.message);
+}
+function saveComments() {
+  try {
+    fs.writeFileSync(COMMENTS_FILE, JSON.stringify(COMMENTS, null, 2));
+  } catch (e) {
+    console.warn('Could not save comments:', e.message);
+  }
+}
+
+// Seed a few fake visitor opinions so the community section never feels empty.
+// Only seeds if the file is empty / fresh.
+function seedCommentsIfEmpty() {
+  if (Object.keys(COMMENTS).length > 0) return;
+  const seed = (artworkId, items) => {
+    COMMENTS[artworkId] = items.map((c, i) => ({
+      id: `seed-${artworkId}-${i}`,
+      username: c.u,
+      displayName: c.n,
+      text: c.t,
+      createdAt: new Date(Date.now() - (i + 1) * 86400_000 * (1 + i)).toISOString(),
+    }));
+  };
+  // Universal pool — used for any painting that has no real comments yet
+  COMMENTS['__pool__'] = [
+    { id: 'p1', username: 'amelia', displayName: 'Amelia',
+      text: 'Stood in front of this for fifteen minutes. The light catches differently each time.',
+      createdAt: new Date(Date.now() - 4 * 86400_000).toISOString() },
+    { id: 'p2', username: 'mateo', displayName: 'Mateo',
+      text: 'There is a quiet violence in the brushwork that the photographs never capture.',
+      createdAt: new Date(Date.now() - 11 * 86400_000).toISOString() },
+    { id: 'p3', username: 'noor', displayName: 'Noor',
+      text: 'I think about this painting on rainy days. It feels like memory.',
+      createdAt: new Date(Date.now() - 21 * 86400_000).toISOString() },
+    { id: 'p4', username: 'kenji', displayName: 'Kenji',
+      text: 'The composition leads your eye to the smallest detail, then refuses to let go.',
+      createdAt: new Date(Date.now() - 30 * 86400_000).toISOString() },
+    { id: 'p5', username: 'isabel', displayName: 'Isabel',
+      text: 'Saw it in person years ago. Reproductions cannot do the scale justice.',
+      createdAt: new Date(Date.now() - 47 * 86400_000).toISOString() },
+  ];
+  saveComments();
+}
+seedCommentsIfEmpty();
+
+function authMiddleware(req, res, next) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const username = token && TOKENS.get(token);
+  if (!username || !USERS[username]) {
+    return res.status(401).json({ error: 'not authenticated' });
+  }
+  req.user = USERS[username];
+  next();
+}
 
 // ---------------------------------------------------------------------------
 // In-memory cache (TTL in ms)
@@ -189,7 +286,8 @@ function stripHtml(html) {
 
 function normalizeArtwork(a) {
   return {
-    id: a.id,
+    id: `aic:${a.id}`,
+    source: 'aic',
     title: a.title,
     artist: a.artist_title || a.artist_display || 'Unknown',
     artistFull: a.artist_display,
@@ -211,6 +309,99 @@ function normalizeArtwork(a) {
     onView: !!a.is_on_view,
     aicUrl: `https://www.artic.edu/artworks/${a.id}`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Met Museum API integration
+// Public, no key. https://metmuseum.github.io/
+// ---------------------------------------------------------------------------
+const MET = 'https://collectionapi.metmuseum.org/public/collection/v1';
+
+function normalizeMet(o) {
+  if (!o || !o.objectID || !o.primaryImage) return null;
+  return {
+    id: `met:${o.objectID}`,
+    source: 'met',
+    title: o.title || 'Untitled',
+    artist: o.artistDisplayName || 'Unknown',
+    artistFull: [o.artistDisplayName, o.artistDisplayBio].filter(Boolean).join(' · '),
+    date: o.objectDate || '',
+    dateStart: Number.isFinite(o.objectBeginDate) ? o.objectBeginDate : null,
+    dateEnd: Number.isFinite(o.objectEndDate) ? o.objectEndDate : null,
+    medium: o.medium || null,
+    place: o.culture || o.country || null,
+    description: '', // Met API doesn't expose descriptions — show metadata only
+    image: o.primaryImage,
+    imageLarge: o.primaryImage,
+    thumbnail: o.primaryImageSmall || o.primaryImage,
+    lqip: null,
+    classification: o.classification || null,
+    style: o.period || null,
+    styles: [o.period, o.dynasty].filter(Boolean),
+    department: o.department || null,
+    gallery: o.GalleryNumber || null,
+    onView: !!o.isOnView,
+    aicUrl: o.objectURL || `https://www.metmuseum.org/art/collection/search/${o.objectID}`,
+  };
+}
+
+async function metSearchByArtist(artistName) {
+  const cacheKey = `met:byartist:${artistName}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+  try {
+    const url = `${MET}/search?artistOrCulture=true&hasImages=true&medium=Paintings&q=${encodeURIComponent(artistName)}`;
+    const r = await fetch(url);
+    if (!r.ok) return [];
+    const j = await r.json();
+    const ids = (j.objectIDs || []).slice(0, 8); // take top 8 per artist
+    cacheSet(cacheKey, ids);
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+async function metFetchObject(id) {
+  const cacheKey = `met:obj:${id}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return cached; // can be a normalized obj OR null (cached "not paintable")
+  try {
+    const r = await fetch(`${MET}/objects/${id}`);
+    if (!r.ok) {
+      cacheSet(cacheKey, null);
+      return null;
+    }
+    const obj = await r.json();
+    const norm = normalizeMet(obj);
+    // Only keep ones that are actually paintings with an image
+    const isPainting = norm && /paint/i.test(norm.classification || '');
+    const val = isPainting ? norm : null;
+    cacheSet(cacheKey, val);
+    return val;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch paintings from Met for the given style by querying each artist in
+ * the curated list. Heavy first call; fast after cache warms.
+ */
+async function metFetchForStyle(style, period, max = 20) {
+  if (!style || !style.artists || !style.artists.length) return [];
+  const artists = style.artists.slice(0, 6); // cap to keep things fast
+  // Search by each artist in parallel
+  const idLists = await Promise.all(artists.map(metSearchByArtist));
+  const flat = [...new Set(idLists.flat())].slice(0, max * 2);
+  const items = await Promise.all(flat.map(metFetchObject));
+  let valid = items.filter(Boolean);
+  if (period && period.start != null) {
+    valid = valid.filter(
+      (i) => i.dateStart != null && i.dateStart >= period.start && i.dateStart <= period.end
+    );
+  }
+  return valid.slice(0, max);
 }
 
 /**
@@ -286,6 +477,9 @@ app.get('/api/filters', (req, res) => {
 
 /**
  * GET /api/artworks?page=1&limit=20&period=1800s&style=impressionism
+ *
+ * Combines results from BOTH AIC and Met Museum APIs (in parallel),
+ * dedupes by composite id, and returns a merged list.
  */
 app.get('/api/artworks', async (req, res) => {
   try {
@@ -296,29 +490,51 @@ app.get('/api/artworks', async (req, res) => {
     const period = PERIODS.find((p) => p.key === periodKey) || PERIODS[0];
     const style = STYLES.find((s) => s.key === styleKey) || STYLES[0];
 
-    const cacheKey = `paintings:${page}:${limit}:${period.key}:${style.key}`;
+    const cacheKey = `combined:${page}:${limit}:${period.key}:${style.key}`;
     const cached = cacheGet(cacheKey);
     if (cached) {
       res.set('X-Cache', 'HIT');
       return res.json(cached);
     }
 
-    const aic = await searchPaintings({
-      size: limit * 2, // overfetch — items without image_id will be filtered
-      from: (page - 1) * limit,
-      period,
-      style,
-    });
+    // Fire AIC + Met in parallel
+    const [aicResp, metItems] = await Promise.all([
+      searchPaintings({
+        size: limit * 2,
+        from: (page - 1) * limit,
+        period,
+        style,
+      }).catch(() => ({ data: [], pagination: {} })),
+      metFetchForStyle(style, period, Math.ceil(limit / 2)).catch(() => []),
+    ]);
 
-    const items = aic.data
+    const aicItems = aicResp.data
       .filter((a) => a.image_id)
-      .map(normalizeArtwork)
+      .map(normalizeArtwork);
+
+    // Interleave AIC and Met so the gallery feels mixed rather than blocky
+    const merged = [];
+    const max = Math.max(aicItems.length, metItems.length);
+    for (let i = 0; i < max; i++) {
+      if (aicItems[i]) merged.push(aicItems[i]);
+      if (metItems[i]) merged.push(metItems[i]);
+    }
+
+    // Dedupe (shouldn't collide since sources differ, but just in case)
+    const seen = new Set();
+    const items = merged
+      .filter((x) => {
+        if (seen.has(x.id)) return false;
+        seen.add(x.id);
+        return true;
+      })
       .slice(0, limit);
 
     const payload = {
       data: items,
       filters: { period: period.key, style: style.key },
-      pagination: aic.pagination,
+      sources: { aic: aicItems.length, met: metItems.length, returned: items.length },
+      pagination: aicResp.pagination,
     };
     cacheSet(cacheKey, payload);
     res.set('X-Cache', 'MISS');
@@ -330,24 +546,42 @@ app.get('/api/artworks', async (req, res) => {
 });
 
 /**
- * GET /api/artworks/:id — full detail for one painting
+ * Parse a composite id like "aic:14655" or "met:435868". Legacy plain
+ * numbers are assumed to be AIC (so old URLs / favorites still work).
+ */
+function parseCompositeId(raw) {
+  const s = String(raw);
+  if (s.startsWith('met:')) return { source: 'met', id: s.slice(4) };
+  if (s.startsWith('aic:')) return { source: 'aic', id: s.slice(4) };
+  return { source: 'aic', id: s };
+}
+
+/**
+ * GET /api/artworks/:id — full detail for one painting (any source)
+ *   :id can be "aic:14655", "met:435868", or just "14655" (legacy AIC)
  */
 app.get('/api/artworks/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const cacheKey = `art:${id}`;
+    const { source, id } = parseCompositeId(req.params.id);
+    const cacheKey = `art:${source}:${id}`;
     const cached = cacheGet(cacheKey);
     if (cached) {
       res.set('X-Cache', 'HIT');
       return res.json(cached);
     }
-    const url = `${AIC}/artworks/${id}?fields=${FIELDS.join(',')}`;
-    const aicRes = await fetch(url);
-    if (!aicRes.ok) {
-      return res.status(aicRes.status).json({ error: `AIC ${aicRes.status}` });
+    let payload = null;
+    if (source === 'met') {
+      payload = await metFetchObject(id);
+      if (!payload) return res.status(404).json({ error: 'Met artwork not found' });
+    } else {
+      const url = `${AIC}/artworks/${id}?fields=${FIELDS.join(',')}`;
+      const aicRes = await fetch(url);
+      if (!aicRes.ok) {
+        return res.status(aicRes.status).json({ error: `AIC ${aicRes.status}` });
+      }
+      const aic = await aicRes.json();
+      payload = normalizeArtwork(aic.data);
     }
-    const aic = await aicRes.json();
-    const payload = normalizeArtwork(aic.data);
     cacheSet(cacheKey, payload);
     res.set('X-Cache', 'MISS');
     res.json(payload);
@@ -379,6 +613,208 @@ app.get('/api/featured', async (req, res) => {
     console.error('GET /api/featured failed', e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Auth routes
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/auth/login  { username, password }
+ *   → { token, user }
+ */
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  // Demo creds: be forgiving about case for both fields so mobile
+  // auto-capitalize doesn't lock people out.
+  const u = String(username || '').trim().toLowerCase();
+  const p = String(password || '').trim().toLowerCase();
+  const user = USERS[u];
+  if (!user || user.password.toLowerCase() !== p) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  const token = crypto.randomBytes(24).toString('hex');
+  TOKENS.set(token, user.username);
+  const { password: _, ...safeUser } = user;
+  res.json({ token, user: safeUser });
+});
+
+/**
+ * POST /api/auth/logout
+ */
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+  const token = req.headers.authorization.slice(7);
+  TOKENS.delete(token);
+  res.json({ ok: true });
+});
+
+/**
+ * GET /api/me — current user (used by frontend to validate token on boot)
+ */
+app.get('/api/me', authMiddleware, (req, res) => {
+  const { password, ...safeUser } = req.user;
+  const ids = FAVORITES[req.user.username] || [];
+  res.json({ ...safeUser, favoritesCount: ids.length });
+});
+
+// ---------------------------------------------------------------------------
+// Favorites
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/favorites — all favorited artworks for the current user.
+ * Returns full artwork objects (fetched in parallel from AIC/cache).
+ */
+// Migrate legacy numeric favorites to "aic:NNN" composite form
+function normalizeFavId(raw) {
+  const s = String(raw);
+  if (s.startsWith('met:') || s.startsWith('aic:')) return s;
+  return `aic:${s}`;
+}
+
+app.get('/api/favorites', authMiddleware, async (req, res) => {
+  try {
+    const ids = (FAVORITES[req.user.username] || []).map(normalizeFavId);
+    if (!ids.length) return res.json({ data: [] });
+
+    const data = await Promise.all(
+      ids.map(async (compositeId) => {
+        const { source, id } = parseCompositeId(compositeId);
+        const cacheKey = `art:${source}:${id}`;
+        const cached = cacheGet(cacheKey);
+        if (cached) return cached;
+        try {
+          if (source === 'met') {
+            const norm = await metFetchObject(id);
+            return norm; // already cached inside metFetchObject
+          }
+          const r = await fetch(`${AIC}/artworks/${id}?fields=${FIELDS.join(',')}`);
+          if (!r.ok) return null;
+          const j = await r.json();
+          const norm = normalizeArtwork(j.data);
+          cacheSet(cacheKey, norm);
+          return norm;
+        } catch {
+          return null;
+        }
+      })
+    );
+    res.json({ data: data.filter(Boolean) });
+  } catch (e) {
+    console.error('GET /api/favorites failed', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/favorites/:id — add to favorites. :id is composite ("aic:14655")
+ */
+app.post('/api/favorites/:id', authMiddleware, (req, res) => {
+  const id = normalizeFavId(req.params.id);
+  const u = req.user.username;
+  if (!FAVORITES[u]) FAVORITES[u] = [];
+  // Normalize any legacy numeric entries to composite first
+  FAVORITES[u] = FAVORITES[u].map(normalizeFavId);
+  if (!FAVORITES[u].includes(id)) {
+    FAVORITES[u].push(id);
+    saveFavorites();
+  }
+  res.json({ ok: true, ids: FAVORITES[u] });
+});
+
+/**
+ * DELETE /api/favorites/:id
+ */
+app.delete('/api/favorites/:id', authMiddleware, (req, res) => {
+  const id = normalizeFavId(req.params.id);
+  const u = req.user.username;
+  if (!FAVORITES[u]) FAVORITES[u] = [];
+  FAVORITES[u] = FAVORITES[u].map(normalizeFavId).filter((x) => x !== id);
+  saveFavorites();
+  res.json({ ok: true, ids: FAVORITES[u] });
+});
+
+/**
+ * GET /api/favorites/ids — just the id list (lightweight, for hearts state)
+ */
+app.get('/api/favorites/ids', authMiddleware, (req, res) => {
+  res.json({ ids: FAVORITES[req.user.username] || [] });
+});
+
+// ---------------------------------------------------------------------------
+// Comments / Interpretations
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/artworks/:id/comments
+ *   → { yours, others }
+ * `yours` is the current user's most recent comment (if logged in & has one).
+ * `others` is everyone else's comments, newest first. Falls back to a curated
+ * "pool" of generic museum-visitor reflections when no real users have
+ * commented yet, so the section never feels empty.
+ */
+app.get('/api/artworks/:id/comments', (req, res) => {
+  const artworkId = String(req.params.id);
+  const real = COMMENTS[artworkId] || [];
+
+  // Identify viewer (auth is optional here)
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const username = token && TOKENS.get(token);
+
+  const sorted = [...real].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const yours = username ? sorted.find((c) => c.username === username) || null : null;
+  let others = sorted.filter((c) => !yours || c.id !== yours.id);
+
+  // Pad with a couple of generic pool entries so the section feels alive.
+  // We never override real comments, only supplement them.
+  const pool = COMMENTS['__pool__'] || [];
+  const padTarget = 3;
+  if (others.length < padTarget) {
+    others = others.concat(pool.slice(0, padTarget - others.length));
+  }
+
+  res.json({ yours, others });
+});
+
+/**
+ * POST /api/artworks/:id/comments  { text }
+ *   → the created comment. Auth required.
+ *
+ * If the user already has a comment for this artwork, it replaces it
+ * (treat each user as having one "interpretation" per painting).
+ */
+app.post('/api/artworks/:id/comments', authMiddleware, (req, res) => {
+  const artworkId = String(req.params.id);
+  const text = String((req.body && req.body.text) || '').trim();
+  if (!text) return res.status(400).json({ error: 'text required' });
+  if (text.length > 800) return res.status(400).json({ error: 'too long (max 800)' });
+
+  if (!COMMENTS[artworkId]) COMMENTS[artworkId] = [];
+  // Remove previous comment from same user (one interpretation per user)
+  COMMENTS[artworkId] = COMMENTS[artworkId].filter((c) => c.username !== req.user.username);
+
+  const c = {
+    id: crypto.randomBytes(8).toString('hex'),
+    username: req.user.username,
+    displayName: req.user.displayName,
+    text,
+    createdAt: new Date().toISOString(),
+  };
+  COMMENTS[artworkId].push(c);
+  saveComments();
+  res.json(c);
+});
+
+/**
+ * DELETE /api/artworks/:id/comments/mine — remove your own comment
+ */
+app.delete('/api/artworks/:id/comments/mine', authMiddleware, (req, res) => {
+  const artworkId = String(req.params.id);
+  if (!COMMENTS[artworkId]) return res.json({ ok: true });
+  COMMENTS[artworkId] = COMMENTS[artworkId].filter((c) => c.username !== req.user.username);
+  saveComments();
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
