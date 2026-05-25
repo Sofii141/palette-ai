@@ -260,29 +260,47 @@
     text-align: center;
     padding: 12px 0 16px;
   }
+  .filter-section {
+    padding: 0 24px 6px;
+  }
+  .filter-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 6px;
+    padding-left: 2px;
+  }
   .chips {
     display: flex;
     gap: 14px;
-    padding: 0 24px 16px;
     overflow-x: auto;
     align-items: center;
+    padding-bottom: 12px;
   }
   .chips::-webkit-scrollbar { display: none; }
   .chip {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 500;
     color: var(--text-muted);
-    padding: 4px 2px;
-    letter-spacing: 1px;
+    padding: 2px 2px;
+    letter-spacing: 0.8px;
     white-space: nowrap;
     transition: color .15s;
+    flex-shrink: 0;
   }
   .chip.active {
     color: var(--text);
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 6px;
+  }
+  .filter-divider {
+    margin: 0 24px 8px;
+    height: 1px;
+    background: var(--border);
   }
   .gallery-grid {
     display: grid;
@@ -516,7 +534,15 @@
 
       <h1 class="gallery-title">GALLERY</h1>
 
-      <div class="chips" id="chips"></div>
+      <div class="filter-section">
+        <div class="filter-label">By Period</div>
+        <div class="chips" id="chips-period"></div>
+      </div>
+      <div class="filter-divider"></div>
+      <div class="filter-section">
+        <div class="filter-label">By Movement</div>
+        <div class="chips" id="chips-style"></div>
+      </div>
 
       <div id="gallery-content">
         <div class="gallery-loading">Loading the collection&hellip;</div>
@@ -604,24 +630,43 @@ async function loadHome() {
 }
 
 // ---------- Gallery ----------
-const PERIODS = [
-  { label: 'All', value: null },
-  { label: '1600s', value: 1600 },
-  { label: '1700s', value: 1700 },
-  { label: '1800s', value: 1800 },
-  { label: '1900s', value: 1900 },
-];
-let currentPeriod = 0;
+let periods = [{ key: 'all', label: 'All' }];
+let styles = [{ key: 'all', label: 'All' }];
+let currentPeriod = 'all';
+let currentStyle = 'all';
 let galleryItems = [];
 
+async function loadFilters() {
+  try {
+    const f = await fetchJson('/filters');
+    periods = f.periods;
+    styles = f.styles;
+    renderChips();
+  } catch (e) {
+    console.error('filters load failed', e);
+  }
+}
+
 function renderChips() {
-  const el = document.getElementById('chips');
-  el.innerHTML = PERIODS.map((p, i) =>
-    `<button class="chip ${i === currentPeriod ? 'active' : ''}" data-i="${i}">${p.label}</button>`
+  const periodEl = document.getElementById('chips-period');
+  periodEl.innerHTML = periods.map(p =>
+    `<button class="chip ${p.key === currentPeriod ? 'active' : ''}" data-k="${p.key}">${p.label}</button>`
   ).join('');
-  el.querySelectorAll('.chip').forEach(c => {
+  periodEl.querySelectorAll('.chip').forEach(c => {
     c.onclick = () => {
-      currentPeriod = Number(c.dataset.i);
+      currentPeriod = c.dataset.k;
+      renderChips();
+      loadGallery();
+    };
+  });
+
+  const styleEl = document.getElementById('chips-style');
+  styleEl.innerHTML = styles.map(s =>
+    `<button class="chip ${s.key === currentStyle ? 'active' : ''}" data-k="${s.key}">${s.label}</button>`
+  ).join('');
+  styleEl.querySelectorAll('.chip').forEach(c => {
+    c.onclick = () => {
+      currentStyle = c.dataset.k;
       renderChips();
       loadGallery();
     };
@@ -632,12 +677,17 @@ async function loadGallery() {
   const wrap = document.getElementById('gallery-content');
   wrap.innerHTML = '<div class="gallery-loading">Loading the collection&hellip;</div>';
   try {
-    const period = PERIODS[currentPeriod].value;
-    const q = period ? `?period=${period}&limit=20` : '?limit=20';
-    const json = await fetchJson('/artworks' + q);
+    const params = new URLSearchParams({ limit: '20' });
+    if (currentPeriod !== 'all') params.set('period', currentPeriod);
+    if (currentStyle !== 'all') params.set('style', currentStyle);
+    const json = await fetchJson('/artworks?' + params);
     galleryItems = json.data;
     if (!galleryItems.length) {
-      wrap.innerHTML = '<div class="gallery-empty">No artworks for this period.</div>';
+      const filterLabel = [
+        currentStyle !== 'all' && styles.find(s => s.key === currentStyle)?.label,
+        currentPeriod !== 'all' && periods.find(p => p.key === currentPeriod)?.label,
+      ].filter(Boolean).join(' &middot; ');
+      wrap.innerHTML = `<div class="gallery-empty">No paintings found${filterLabel ? ' for ' + filterLabel : ''}.<br>Try a different combination.</div>`;
       return;
     }
     wrap.innerHTML = '<div class="gallery-grid">' + galleryItems.map(a => `
@@ -738,7 +788,7 @@ function toggleTheme() {
 }
 
 // ---------- Boot ----------
-renderChips();
+loadFilters();
 loadHome();
 loadGallery();
 </script>
