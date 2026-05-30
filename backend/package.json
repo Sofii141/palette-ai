@@ -4,8 +4,8 @@
   "description": "Backend API for Palette AI — proxies Art Institute of Chicago + adds caching",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node --env-file=.env server.js",
+    "dev": "node --env-file=.env --watch server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

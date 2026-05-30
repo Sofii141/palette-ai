@@ -198,6 +198,31 @@ export default function ArtworkDetail() {
               </Text>
             </Pressable>
           )}
+          {art.descriptionSource && art.descriptionSource !== 'none' && (
+            <Pressable
+              onPress={() => art.descriptionSourceUrl && Linking.openURL(art.descriptionSourceUrl)}
+              disabled={!art.descriptionSourceUrl}
+              style={styles.sourceRow}
+              hitSlop={6}
+            >
+              <Feather
+                name={
+                  art.descriptionSource === 'wikipedia' ? 'book-open' :
+                  art.descriptionSource === 'ai' ? 'cpu' : 'home'
+                }
+                size={11}
+                color={colors.textMuted}
+              />
+              <Text style={[styles.sourceText, { color: colors.textMuted, fontFamily: fonts.body }]}>
+                {art.descriptionSource === 'wikipedia' && 'Source: Wikipedia'}
+                {art.descriptionSource === 'museum' && 'Source: Museum archive'}
+                {art.descriptionSource === 'ai' && 'AI-generated summary'}
+              </Text>
+              {art.descriptionSourceUrl && (
+                <Feather name="external-link" size={10} color={colors.textMuted} />
+              )}
+            </Pressable>
+          )}
         </View>
 
         {/* INTERPRETATIONS */}
@@ -349,6 +374,11 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: fontSize.xs, letterSpacing: 3, marginBottom: spacing.md },
   description: { fontSize: fontSize.md + 1, lineHeight: (fontSize.md + 1) * 1.6 },
   readMore: { marginTop: spacing.md, fontSize: fontSize.xs, letterSpacing: 2.5 },
+  sourceRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: spacing.md,
+  },
+  sourceText: { fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase' },
 
   interpWrap: { paddingHorizontal: spacing.xxl, marginTop: spacing.xxl },
   yoursCard: {

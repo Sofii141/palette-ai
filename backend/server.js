@@ -312,6 +312,196 @@ function normalizeArtwork(a) {
 }
 
 // ---------------------------------------------------------------------------
+// Description enrichment (Wikipedia → Museum → Groq AI fallback)
+//
+// Many paintings come back from AIC/Met with an empty description.
+// We fill the gap with a 3-layer waterfall:
+//   1. Wikipedia REST API — real human-written summaries (free, no key)
+//   2. The museum's own description (if any)
+//   3. Groq + Llama — short, punchy, "TikTok-style" AI blurb (free key)
+//
+// Every enriched description is cached on disk so we only do the work once
+// per artwork. Cache key is the composite id ("aic:14655" / "met:435868").
+// ---------------------------------------------------------------------------
+const ENRICH_FILE = path.join(__dirname, 'descriptions.json');
+let ENRICH = {};
+try {
+  if (fs.existsSync(ENRICH_FILE)) {
+    ENRICH = JSON.parse(fs.readFileSync(ENRICH_FILE, 'utf8'));
+  }
+} catch (e) {
+  console.warn('Could not load descriptions cache:', e.message);
+}
+function saveEnrich() {
+  try {
+    fs.writeFileSync(ENRICH_FILE, JSON.stringify(ENRICH, null, 2));
+  } catch (e) {
+    console.warn('Could not save descriptions cache:', e.message);
+  }
+}
+
+const WIKI = 'https://en.wikipedia.org/w/api.php';
+const WIKI_REST = 'https://en.wikipedia.org/api/rest_v1';
+
+/**
+ * Search Wikipedia for the article that best matches this painting,
+ * then return its plain-text extract. Returns null if no good match.
+ *
+ * Why two calls: the REST `summary` endpoint needs an exact title, and
+ * AIC titles rarely match Wikipedia titles 1:1. So we use the action API
+ * to search first, then fetch the summary of the top hit.
+ */
+async function fetchWikipediaSummary(title, artist) {
+  if (!title) return null;
+  try {
+    const q = [`"${title}"`, artist, 'painting'].filter(Boolean).join(' ');
+    const searchUrl = `${WIKI}?action=query&list=search&format=json&origin=*&srlimit=1&srsearch=${encodeURIComponent(q)}`;
+    const sr = await fetch(searchUrl, {
+      headers: { 'User-Agent': 'PaletteAI/1.0 (educational portfolio project)' },
+    });
+    if (!sr.ok) return null;
+    const sj = await sr.json();
+    const hit = sj.query && sj.query.search && sj.query.search[0];
+    if (!hit) return null;
+
+    const sumUrl = `${WIKI_REST}/page/summary/${encodeURIComponent(hit.title)}`;
+    const r = await fetch(sumUrl, {
+      headers: { 'User-Agent': 'PaletteAI/1.0 (educational portfolio project)' },
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!j.extract || j.extract.length < 60) return null;
+    // Be conservative — skip Wikipedia disambiguation pages and stubs
+    if (j.type && j.type !== 'standard') return null;
+    return {
+      text: j.extract,
+      title: j.title,
+      url: (j.content_urls && j.content_urls.desktop && j.content_urls.desktop.page) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a short, hooky "TikTok-style" description with Groq + Llama.
+ * Used as the last-resort fallback when neither Wikipedia nor the museum
+ * have anything to say. Free tier, ~1s latency.
+ */
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+
+const SYSTEM_PROMPT = `You are a museum guide who writes short, captivating descriptions of paintings — the kind of blurb that hooks someone scrolling on their phone but still teaches them something real.
+
+Rules:
+- 3 to 5 sentences. Never longer.
+- Plain English. No jargon. If you must use an art term, define it inline.
+- Lead with the most interesting thing about the painting — a detail, a story, a tension. Don't open with "This painting depicts..."
+- Make the reader CARE. They might know nothing about art. Don't lecture.
+- Be accurate. If you're not sure about a fact, leave it out.
+- Never invent biographical details about the artist.
+- No emojis. No hashtags. No "swipe up". Just good writing.`;
+
+async function generateGroqAnalysis(art) {
+  if (!process.env.GROQ_API_KEY) return null;
+  try {
+    const userPrompt = [
+      `Painting: "${art.title}"`,
+      art.artistFull ? `Artist: ${art.artistFull}` : (art.artist ? `Artist: ${art.artist}` : null),
+      art.date ? `Date: ${art.date}` : null,
+      art.medium ? `Medium: ${art.medium}` : null,
+      art.place ? `Place: ${art.place}` : null,
+      art.style ? `Style: ${art.style}` : null,
+      art.classification ? `Type: ${art.classification}` : null,
+      '',
+      'Write the short description now.',
+    ].filter(Boolean).join('\n');
+
+    const r = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        temperature: 0.7,
+        max_tokens: 300,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      console.warn('[groq] failed', r.status, txt.slice(0, 200));
+      return null;
+    }
+    const j = await r.json();
+    const text = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    return text ? text.trim() : null;
+  } catch (e) {
+    console.warn('[groq] error', e.message);
+    return null;
+  }
+}
+
+/**
+ * Enrich an artwork in place: adds `description`, `descriptionSource`, and
+ * (when applicable) `descriptionSourceUrl`. Hits the disk cache first,
+ * then waterfalls Wikipedia → museum description → Groq → leaves blank.
+ *
+ * `descriptionSource` is one of: 'wikipedia' | 'museum' | 'ai' | 'none'.
+ */
+async function enrichArtwork(art) {
+  if (!art || !art.id) return art;
+  const cached = ENRICH[art.id];
+  if (cached && cached.text) {
+    art.description = cached.text;
+    art.descriptionSource = cached.source;
+    art.descriptionSourceUrl = cached.url || null;
+    return art;
+  }
+
+  // Layer 1: Wikipedia
+  const wiki = await fetchWikipediaSummary(art.title, art.artist);
+  if (wiki) {
+    ENRICH[art.id] = { text: wiki.text, source: 'wikipedia', url: wiki.url, at: Date.now() };
+    saveEnrich();
+    art.description = wiki.text;
+    art.descriptionSource = 'wikipedia';
+    art.descriptionSourceUrl = wiki.url;
+    return art;
+  }
+
+  // Layer 2: museum's own description (only if it's substantial)
+  if (art.description && art.description.length > 80) {
+    ENRICH[art.id] = { text: art.description, source: 'museum', url: art.aicUrl || null, at: Date.now() };
+    saveEnrich();
+    art.descriptionSource = 'museum';
+    art.descriptionSourceUrl = art.aicUrl || null;
+    return art;
+  }
+
+  // Layer 3: Groq AI fallback
+  const ai = await generateGroqAnalysis(art);
+  if (ai) {
+    ENRICH[art.id] = { text: ai, source: 'ai', url: null, at: Date.now() };
+    saveEnrich();
+    art.description = ai;
+    art.descriptionSource = 'ai';
+    art.descriptionSourceUrl = null;
+    return art;
+  }
+
+  // Nothing worked — leave whatever description there was, mark source as none
+  art.descriptionSource = art.description ? 'museum' : 'none';
+  art.descriptionSourceUrl = art.aicUrl || null;
+  return art;
+}
+
+// ---------------------------------------------------------------------------
 // Met Museum API integration
 // Public, no key. https://metmuseum.github.io/
 // ---------------------------------------------------------------------------
@@ -613,26 +803,29 @@ app.get('/api/artworks/:id', async (req, res) => {
   try {
     const { source, id } = parseCompositeId(req.params.id);
     const cacheKey = `art:${source}:${id}`;
-    const cached = cacheGet(cacheKey);
-    if (cached) {
-      res.set('X-Cache', 'HIT');
-      return res.json(cached);
-    }
-    let payload = null;
-    if (source === 'met') {
-      payload = await metFetchObject(id);
-      if (!payload) return res.status(404).json({ error: 'Met artwork not found' });
-    } else {
-      const url = `${AIC}/artworks/${id}?fields=${FIELDS.join(',')}`;
-      const aicRes = await fetch(url);
-      if (!aicRes.ok) {
-        return res.status(aicRes.status).json({ error: `AIC ${aicRes.status}` });
+    let payload = cacheGet(cacheKey);
+    let fromCache = !!payload;
+
+    if (!payload) {
+      if (source === 'met') {
+        payload = await metFetchObject(id);
+        if (!payload) return res.status(404).json({ error: 'Met artwork not found' });
+      } else {
+        const url = `${AIC}/artworks/${id}?fields=${FIELDS.join(',')}`;
+        const aicRes = await fetch(url);
+        if (!aicRes.ok) {
+          return res.status(aicRes.status).json({ error: `AIC ${aicRes.status}` });
+        }
+        const aic = await aicRes.json();
+        payload = normalizeArtwork(aic.data);
       }
-      const aic = await aicRes.json();
-      payload = normalizeArtwork(aic.data);
     }
+
+    // Always enrich — it's cached on disk after the first run.
+    await enrichArtwork(payload);
+
     cacheSet(cacheKey, payload);
-    res.set('X-Cache', 'MISS');
+    res.set('X-Cache', fromCache ? 'HIT' : 'MISS');
     res.json(payload);
   } catch (e) {
     console.error('GET /api/artworks/:id failed', e);

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
-  Dimensions, ScrollView,
+  Dimensions, ScrollView, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,16 +18,24 @@ const COL_GAP = spacing.lg;
 const SIDE_PAD = spacing.xl;
 const CARD_W = (SCREEN_W - SIDE_PAD * 2 - COL_GAP) / 2;
 const CARD_H = CARD_W * 1.4;
+const PAGE_SIZE = 20;
 
 export default function Gallery() {
   const { colors } = useTheme();
   const router = useRouter();
   const [items, setItems] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [periods, setPeriods] = useState<readonly FilterOption[]>(PERIODS);
   const [styles_, setStyles] = useState<readonly FilterOption[]>(STYLES);
   const [period, setPeriod] = useState('all');
   const [style, setStyle] = useState('all');
+
+  // Guard against stale responses when filters change mid-fetch.
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
     fetchFilters()
@@ -38,12 +46,69 @@ export default function Gallery() {
       .catch(() => {});
   }, []);
 
+  // Reset and reload whenever filters change.
   useEffect(() => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
-    fetchArtworks({ period, style, limit: 24 })
-      .then((r) => setItems(r.data))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    setItems([]);
+    setPage(1);
+    setHasMore(true);
+    fetchArtworks({ period, style, page: 1, limit: PAGE_SIZE })
+      .then((r) => {
+        if (myReq !== reqIdRef.current) return;
+        setItems(r.data);
+        setHasMore(r.data.length >= PAGE_SIZE);
+      })
+      .catch(() => {
+        if (myReq !== reqIdRef.current) return;
+        setItems([]);
+        setHasMore(false);
+      })
+      .finally(() => {
+        if (myReq !== reqIdRef.current) return;
+        setLoading(false);
+      });
+  }, [period, style]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    const myReq = reqIdRef.current;
+    const next = page + 1;
+    setLoadingMore(true);
+    try {
+      const r = await fetchArtworks({ period, style, page: next, limit: PAGE_SIZE });
+      if (myReq !== reqIdRef.current) return;
+      if (r.data.length === 0) {
+        setHasMore(false);
+      } else {
+        // Dedupe defensively — backend interleaves AIC+Met, occasional repeats happen.
+        setItems((prev) => {
+          const seen = new Set(prev.map((x) => x.id));
+          return [...prev, ...r.data.filter((x) => !seen.has(x.id))];
+        });
+        setPage(next);
+        if (r.data.length < PAGE_SIZE) setHasMore(false);
+      }
+    } catch {
+      // Silently stop trying — user can pull-to-refresh to retry.
+      setHasMore(false);
+    } finally {
+      if (myReq === reqIdRef.current) setLoadingMore(false);
+    }
+  }, [loading, loadingMore, hasMore, page, period, style]);
+
+  const onRefresh = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
+    setRefreshing(true);
+    try {
+      const r = await fetchArtworks({ period, style, page: 1, limit: PAGE_SIZE });
+      if (myReq !== reqIdRef.current) return;
+      setItems(r.data);
+      setPage(1);
+      setHasMore(r.data.length >= PAGE_SIZE);
+    } catch {} finally {
+      if (myReq === reqIdRef.current) setRefreshing(false);
+    }
   }, [period, style]);
 
   return (
@@ -95,6 +160,30 @@ export default function Gallery() {
           }}
           columnWrapperStyle={{ gap: COL_GAP }}
           showsVerticalScrollIndicator={false}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+            />
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator color={colors.accent} />
+              </View>
+            ) : !hasMore && items.length > 0 ? (
+              <View style={styles.footerEnd}>
+                <View style={[styles.endDivider, { backgroundColor: colors.borderStrong }]} />
+                <Text style={[styles.endText, { color: colors.textMuted, fontFamily: fonts.serifItalic }]}>
+                  End of the gallery
+                </Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={[styles.empty, { color: colors.textMuted, fontFamily: fonts.serifItalic }]}>
@@ -154,4 +243,17 @@ const styles = StyleSheet.create({
   empty: { fontSize: fontSize.lg, textAlign: 'center', lineHeight: fontSize.lg * 1.4 },
   cardTitle: { fontSize: fontSize.base, marginTop: spacing.sm, paddingHorizontal: spacing.xs },
   cardDate: { fontSize: fontSize.xs, marginTop: 2, letterSpacing: 1.5, paddingHorizontal: spacing.xs },
+  footerLoader: {
+    width: '100%',
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+  },
+  footerEnd: {
+    width: '100%',
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  endDivider: { width: 32, height: 1, marginBottom: spacing.md },
+  endText: { fontSize: fontSize.sm, letterSpacing: 1 },
 });

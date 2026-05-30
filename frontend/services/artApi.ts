@@ -63,6 +63,10 @@ export interface Artwork {
   gallery: string | null;
   onView: boolean;
   aicUrl: string;
+  /** Where the description came from. Backend enriches detail responses. */
+  descriptionSource?: 'wikipedia' | 'museum' | 'ai' | 'none';
+  /** Link to the source article (Wikipedia / museum page) when applicable. */
+  descriptionSourceUrl?: string | null;
 }
 
 export interface ArtworkListResponse {
